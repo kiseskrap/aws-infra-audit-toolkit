@@ -1,0 +1,21 @@
+.DS_Store
+*.swp
+*.bak
+*.log
+*.pyc
+__pycache__/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# tool outputs
+out/
+tmp/
+*.report.txt
+*.report.json
+
+# editor
+.idea/
+.vscode/

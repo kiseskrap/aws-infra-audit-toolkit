@@ -1,0 +1,17 @@
+# Changelog
+
+All notable changes to this project will be documented in this file. The format
+follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
+project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0]
+
+### Added
+- Initial project scaffold (README, LICENSE, ROADMAP, CHANGELOG).
+- `discover/ecs-overview.sh` — ECS cluster/service/task summary with anomaly hints; supports `--json` output and `AWS_PROFILE`/`AWS_REGION` env vars.
+- `lib/common.sh` — shared bash helpers (colors, error handling, dependency checks).
+
+[Unreleased]: https://github.com/kiseskrap/aws-infra-audit-toolkit/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/kiseskrap/aws-infra-audit-toolkit/releases/tag/v0.1.0

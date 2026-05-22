@@ -6,6 +6,9 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `discover/aurora-ha-audit.sh` — flags Aurora clusters with a single member, clusters whose members all live in the same AZ, and standalone RDS instances with Multi-AZ disabled. Read-only; supports `--json`.
+
 ## [0.1.0]
 
 ### Added

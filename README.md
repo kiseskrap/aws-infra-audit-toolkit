@@ -66,7 +66,7 @@ Hints:
 | Tool | Status | What it does |
 |------|--------|--------------|
 | `discover/ecs-overview.sh` | shipped | Cluster/service/task summary with anomaly hints |
-| `discover/aurora-ha-audit.sh` | planned | Lists RDS/Aurora clusters lacking Multi-AZ or running single instance |
+| `discover/aurora-ha-audit.sh` | shipped | Flags single-instance Aurora clusters, members crowded in one AZ, and standalone RDS without Multi-AZ |
 | `discover/lambda-eol-scanner.py` | planned | Flags Lambda functions on EOL or near-EOL runtimes |
 | `discover/ecr-bloat-report.sh` | planned | Top ECR repos by image count without lifecycle policy |
 | `discover/idle-resources.sh` | planned | Stopped EC2, empty clusters, unused ALBs, unattached EBS |

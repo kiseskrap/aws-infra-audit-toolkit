@@ -38,6 +38,9 @@ AWS_PROFILE=staging AWS_REGION=us-east-1 ./discover/ecs-overview.sh
 
 # JSON output for piping into other tools
 ./discover/ecs-overview.sh --json | jq '.[] | select(.runningTasks == 0)'
+
+# Flag Lambda functions on deprecated or soon-to-deprecate runtimes
+./discover/lambda-eol-scanner.py
 ```
 
 ## Example output
@@ -67,7 +70,7 @@ Hints:
 |------|--------|--------------|
 | `discover/ecs-overview.sh` | shipped | Cluster/service/task summary with anomaly hints |
 | `discover/aurora-ha-audit.sh` | shipped | Flags single-instance Aurora clusters, members crowded in one AZ, and standalone RDS without Multi-AZ |
-| `discover/lambda-eol-scanner.py` | planned | Flags Lambda functions on EOL or near-EOL runtimes |
+| `discover/lambda-eol-scanner.py` | shipped | Flags Lambda functions on EOL or near-EOL runtimes |
 | `discover/ecr-bloat-report.sh` | planned | Top ECR repos by image count without lifecycle policy |
 | `discover/idle-resources.sh` | planned | Stopped EC2, empty clusters, unused ALBs, unattached EBS |
 | `audit/cost-hotspots.py` | planned | Cost Explorer query + topology-aware ranking |

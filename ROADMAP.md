@@ -6,8 +6,8 @@ Each unchecked item is a future commit. Items are sequenced to deliver increment
 
 Read-only inventory tools that answer "what exists?"
 
-- [ ] `discover/aurora-ha-audit.sh` — RDS/Aurora clusters lacking Multi-AZ or running as a single instance. Flags writers without read replicas.
-- [ ] `discover/lambda-eol-scanner.py` — Lambda functions on EOL or near-EOL runtimes (nodejs12/14/16, python3.7/3.8, etc.). Cross-references AWS's published EOL calendar.
+- [x] `discover/aurora-ha-audit.sh` — RDS/Aurora clusters lacking Multi-AZ or running as a single instance. Flags writers without read replicas.
+- [x] `discover/lambda-eol-scanner.py` — Lambda functions on EOL or near-EOL runtimes (nodejs12/14/16, python3.7/3.8, etc.). Cross-references AWS's published EOL calendar.
 - [ ] `discover/ecr-bloat-report.sh` — Top ECR repos by image count, flags those without a lifecycle policy.
 - [ ] `discover/idle-resources.sh` — Stopped EC2 (with EBS still attached), empty ECS clusters, unused ALBs, unattached EBS volumes, unused EIPs.
 

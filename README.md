@@ -72,7 +72,7 @@ Hints:
 | `discover/aurora-ha-audit.sh` | shipped | Flags single-instance Aurora clusters, members crowded in one AZ, and standalone RDS without Multi-AZ |
 | `discover/lambda-eol-scanner.py` | shipped | Flags Lambda functions on EOL or near-EOL runtimes |
 | `discover/ecr-bloat-report.sh` | planned | Top ECR repos by image count without lifecycle policy |
-| `discover/idle-resources.sh` | planned | Stopped EC2, empty clusters, unused ALBs, unattached EBS |
+| `discover/idle-resources.sh` | shipped | Stopped EC2 (with age), empty ECS clusters, ALBs with no targets, unattached EBS, unused EIPs |
 | `audit/cost-hotspots.py` | planned | Cost Explorer query + topology-aware ranking |
 | `audit/security-baseline.sh` | planned | Open SGs, public S3, IAM users with old keys |
 

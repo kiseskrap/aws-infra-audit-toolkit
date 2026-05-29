@@ -22,6 +22,35 @@ The AWS console is fine for any single question but terrible for getting a portf
 
 Everything is **read-only**. No mutations.
 
+## Who this is for
+
+In many environments, an AI agent with AWS access can generate a similar audit on demand — often faster.
+
+This toolkit exists for situations where deterministic, reviewable infrastructure audits matter more than conversational flexibility.
+
+Useful cases include:
+
+* **Compliance-sensitive environments**
+  Some organizations cannot allow LLMs to enumerate infrastructure or interact with production accounts. A read-only script with fully inspectable logic is often easier to approve than an opaque agent workflow or chat transcript.
+
+* **Repeatable operational baselines**
+  Infrastructure reviews are more useful when outputs are stable and comparable over time. Consistent table / `--json` artifacts make quarterly drift analysis and diff-based reviews straightforward.
+
+* **Codified operational heuristics**
+  The toolkit embeds explicit infrastructure opinions and risk patterns:
+
+  * idle EC2 / unattached EBS / unused EIPs / empty load balancers
+  * Aurora clusters without failover (single-instance, single-AZ)
+  * Lambdas on EOL or near-EOL runtimes
+  * ECR repos accumulating without a lifecycle policy
+
+  These checks remain versioned, reviewable, and deterministic across runs.
+
+* **SRE onboarding and account discovery**
+  New engineers inheriting AWS environments often do not know what to inspect first. A curated audit checklist reduces discovery time and establishes operational baselines quickly.
+
+If your workflow already allows direct AI-assisted cloud analysis, that may be the faster option. This project focuses on environments where reproducibility, auditability, and operational consistency are higher priorities.
+
 ## Quick start
 
 Requires `awscli` v2, `jq`, and a configured profile.

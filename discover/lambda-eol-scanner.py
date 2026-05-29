@@ -152,12 +152,29 @@ def session_region(session: boto3.session.Session) -> str:
     return region
 
 
+def _progress(message: str) -> None:
+    """Write an in-place status line to stderr, only when stderr is a TTY.
+
+    Mirrors lib/common.sh's progress() so JSON pipelines and CI runs stay
+    quiet but interactive users see something move during pagination.
+    """
+    if sys.stderr.isatty():
+        sys.stderr.write(f"\r\033[K{message}")
+        sys.stderr.flush()
+
+
+def _progress_clear() -> None:
+    if sys.stderr.isatty():
+        sys.stderr.write("\r\033[K")
+        sys.stderr.flush()
+
+
 def fetch_functions(session: boto3.session.Session) -> list[dict[str, Any]]:
     client = session.client("lambda")
     paginator = client.get_paginator("list_functions")
     functions: list[dict[str, Any]] = []
 
-    for page in paginator.paginate():
+    for page_num, page in enumerate(paginator.paginate(), start=1):
         for fn in page.get("Functions", []):
             runtime = fn.get("Runtime")
             status = runtime_status(runtime, date.today())
@@ -174,7 +191,9 @@ def fetch_functions(session: boto3.session.Session) -> list[dict[str, Any]]:
                     "hint": status["hint"],
                 }
             )
+        _progress(f"scanned {len(functions)} functions (page {page_num})")
 
+    _progress_clear()
     return functions
 
 

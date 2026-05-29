@@ -41,6 +41,9 @@ AWS_PROFILE=staging AWS_REGION=us-east-1 ./discover/ecs-overview.sh
 
 # Flag Lambda functions on deprecated or soon-to-deprecate runtimes
 ./discover/lambda-eol-scanner.py
+
+# Rank ECR repos by image count and flag those without a lifecycle policy
+./discover/ecr-bloat-report.sh
 ```
 
 ## Example output
@@ -71,12 +74,24 @@ Hints:
 | `discover/ecs-overview.sh` | shipped | Cluster/service/task summary with anomaly hints |
 | `discover/aurora-ha-audit.sh` | shipped | Flags single-instance Aurora clusters, members crowded in one AZ, and standalone RDS without Multi-AZ |
 | `discover/lambda-eol-scanner.py` | shipped | Flags Lambda functions on EOL or near-EOL runtimes |
-| `discover/ecr-bloat-report.sh` | planned | Top ECR repos by image count without lifecycle policy |
+| `discover/ecr-bloat-report.sh` | shipped | Ranks ECR repos by image count and flags those with no lifecycle policy |
 | `discover/idle-resources.sh` | shipped | Stopped EC2 (with age), empty ECS clusters, ALBs with no targets, unattached EBS, unused EIPs |
 | `audit/cost-hotspots.py` | planned | Cost Explorer query + topology-aware ranking |
 | `audit/security-baseline.sh` | planned | Open SGs, public S3, IAM users with old keys |
 
 See [ROADMAP.md](./ROADMAP.md) for the full sequence.
+
+## Reading the report — `ecr-bloat-report`
+
+A repo with `no-lifecycle-policy` is the headline finding. The extra hints classify *what kind* of bloat it is so you can pick the right lifecycle rule (pattern hints only appear on repos without a policy, and only when there are enough images for the ratio to be meaningful):
+
+| Hint | What it means | Recommended lifecycle action |
+|------|---------------|------------------------------|
+| `untagged-heavy` | More than half the images are untagged. Usually a `latest`-style tag overwrite pattern where old manifests get orphaned. | Delete untagged images older than 7–30 days. Single rule, often clears most of the bloat immediately. |
+| `frequent-deploy` | 100+ images, almost all tagged. Typical of a busy CI pipeline tagging by git SHA. | Keep last *N* tagged images (e.g. 50). |
+| `ephemeral-env` | Repo name carries `dev`/`develop`/`stage`/`staging`. Lower retention is usually safe. | Be more aggressive than prod — `keep last 10` or `expire after 14 days` is typical. |
+
+Triage order: start with **untagged-heavy** rows at the top of the table — the per-row return on a one-line lifecycle rule is highest there.
 
 ## Design principles
 

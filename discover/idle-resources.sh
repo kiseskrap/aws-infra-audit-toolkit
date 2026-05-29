@@ -136,10 +136,13 @@ check_empty_load_balancers() {
   if (( count == 0 )); then echo "[]"; return 0; fi
 
   local result="[]"
+  local i=0
   while IFS= read -r lb; do
     local arn name
     arn=$(echo "$lb" | jq -r .arn)
     name=$(echo "$lb" | jq -r .name)
+    i=$(( i + 1 ))
+    progress "[3/5] load balancers: [$i/$count] $name"
 
     local tg_arns_raw
     tg_arns_raw=$(aws elbv2 describe-target-groups \
@@ -210,14 +213,30 @@ run_check() {
   fi
 }
 
+# Run each check explicitly so we can surface per-check progress on stderr.
+# The slowest is empty_load_balancers (N×M API calls), which also reports
+# per-LB progress from inside its loop — the outer progress here just shows
+# which check is currently active.
+progress "[1/5] stopped EC2 instances..."
+stopped_ec2=$(run_check check_stopped_ec2)
+progress "[2/5] empty ECS clusters..."
+empty_ecs=$(run_check check_empty_ecs_clusters)
+progress "[3/5] load balancers..."
+empty_lbs=$(run_check check_empty_load_balancers)
+progress "[4/5] available EBS volumes..."
+available_ebs=$(run_check check_available_ebs)
+progress "[5/5] unassociated Elastic IPs..."
+unused_eips=$(run_check check_unused_eips)
+progress_clear
+
 report=$(jq -n \
   --arg account "$account" \
   --arg region  "$region" \
-  --argjson stoppedEc2          "$(run_check check_stopped_ec2)" \
-  --argjson emptyEcsClusters    "$(run_check check_empty_ecs_clusters)" \
-  --argjson emptyLoadBalancers  "$(run_check check_empty_load_balancers)" \
-  --argjson availableEbs        "$(run_check check_available_ebs)" \
-  --argjson unusedEips          "$(run_check check_unused_eips)" '
+  --argjson stoppedEc2          "$stopped_ec2" \
+  --argjson emptyEcsClusters    "$empty_ecs" \
+  --argjson emptyLoadBalancers  "$empty_lbs" \
+  --argjson availableEbs        "$available_ebs" \
+  --argjson unusedEips          "$unused_eips" '
   {
     account: $account,
     region: $region,

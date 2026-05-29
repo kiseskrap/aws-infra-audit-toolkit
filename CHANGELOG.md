@@ -10,6 +10,11 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `discover/aurora-ha-audit.sh` — flags Aurora clusters with a single member, clusters whose members all live in the same AZ, and standalone RDS instances with Multi-AZ disabled. Read-only; supports `--json`.
 - `discover/lambda-eol-scanner.py` — lists Lambda functions and classifies runtimes as EOL, near-EOL, OK, or unknown/container. Read-only; supports `--json`.
 - `discover/idle-resources.sh` — surfaces likely-wasted resources across five categories (stopped EC2 with age, empty ECS clusters, load balancers with no registered targets, available EBS volumes, unassociated Elastic IPs). Each check runs independently so a single permission failure does not stop the others. Read-only; supports `--json`.
+- `discover/ecr-bloat-report.sh` — lists ECR repositories sorted by image count and flags repos with no lifecycle policy (a common source of silent storage cost growth in inherited accounts). Surfaces untagged image counts, classifies each unmanaged repo by bloat pattern (`untagged-heavy`, `frequent-deploy`, `ephemeral-env`) so the right lifecycle rule is obvious, and degrades gracefully when individual repo lookups fail. Read-only; supports `--json`. See README's "Reading the report" section for triage guidance.
+- `lib/common.sh` — `progress` / `progress_clear` helpers for tools that loop over many resources. Output goes to stderr only when stderr is a TTY, so `--json` pipelines and CI runs stay quiet.
+
+### Changed
+- `discover/ecr-bloat-report.sh`, `discover/idle-resources.sh`, `discover/lambda-eol-scanner.py` now print a per-resource (or per-check) progress line on stderr during long scans, so the tools no longer look frozen on accounts with many repos / load balancers / Lambda functions.
 
 ## [0.1.0]
 

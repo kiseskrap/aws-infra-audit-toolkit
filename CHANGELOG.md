@@ -16,6 +16,9 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - `discover/ecr-bloat-report.sh`, `discover/idle-resources.sh`, `discover/lambda-eol-scanner.py` now print a per-resource (or per-check) progress line on stderr during long scans, so the tools no longer look frozen on accounts with many repos / load balancers / Lambda functions.
 
+### CI
+- `.github/workflows/lint.yml` — runs `shellcheck` against all `**/*.sh` and `ruff check` against the Python tools on every push to `main` and every PR.
+
 ## [0.1.0]
 
 ### Added

@@ -21,6 +21,7 @@ if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
   readonly C_GREEN=$'\033[32m'
   readonly C_CYAN=$'\033[36m'
 else
+  # shellcheck disable=SC2034  # color palette is part of this lib's surface for sourcing scripts
   readonly C_RESET="" C_BOLD="" C_DIM="" C_RED="" C_YELLOW="" C_GREEN="" C_CYAN=""
 fi
 

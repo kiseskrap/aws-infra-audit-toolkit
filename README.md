@@ -1,5 +1,7 @@
 # aws-infra-audit-toolkit
 
+[![lint](https://github.com/kiseskrap/aws-infra-audit-toolkit/actions/workflows/lint.yml/badge.svg)](https://github.com/kiseskrap/aws-infra-audit-toolkit/actions/workflows/lint.yml)
+
 Opinionated, read-only audit tools for AWS accounts that host many services across multiple business domains on ECS, RDS, Lambda, and friends.
 
 Built from real-world experience auditing a large multi-service AWS account with dozens of ECS clusters, Aurora databases, and Lambda workloads in a production APAC environment. The patterns generalize.

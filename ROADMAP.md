@@ -16,7 +16,7 @@ Read-only inventory tools that answer "what exists?"
 Tools that move from "what exists" to "is it healthy?"
 
 - [ ] `audit/cost-hotspots.py` — Cost Explorer query (last 30 days, by service) joined with topology data; ranks where to look first.
-- [ ] `audit/security-baseline.sh` — Permissive security groups (0.0.0.0/0 inbound on non-80/443), public S3 buckets, IAM users with access keys older than 180 days.
+- [x] `audit/security-baseline.sh` — Permissive security groups (0.0.0.0/0 inbound on non-80/443), public S3 buckets, IAM users with access keys older than 180 days.
 - [ ] `audit/cross-env-leak-check.sh` — Detects when staging and production share the same Redis, S3 bucket, or OpenSearch domain (a real failure mode I've seen).
 
 ## v0.4 — project hygiene

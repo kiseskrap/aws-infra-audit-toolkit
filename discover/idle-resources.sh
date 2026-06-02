@@ -340,6 +340,22 @@ report=$(jq -n \
     }
   }')
 
+# Cross-section ranking by monthly cost. Per-section ordering is type-locked,
+# so the cross-cut view here surfaces where the cleanup budget should actually
+# go first — often a $9 EBS or a single $18 ALB beats a dozen $0.10 noise rows.
+report=$(echo "$report" | jq '. + {
+  topWaste: (
+    ([(.checks.stoppedEc2.items         // [])[] | {type: "EC2-stopped",      id: .id,                       name: (.name // "-"),                cost: (.monthlyCostUsd // 0)}]
+   + [(.checks.emptyLoadBalancers.items // [])[] | {type: "LB-empty",         id: (.arn // .name),           name: .name,                          cost: (.monthlyCostUsd // 0)}]
+   + [(.checks.availableEbs.items       // [])[] | {type: "EBS-unattached",   id: .id,                       name: "\(.size)GiB \(.type)",         cost: (.monthlyCostUsd // 0)}]
+   + [(.checks.unusedEips.items         // [])[] | {type: "EIP-unused",       id: .allocationId,             name: .publicIp,                      cost: (.monthlyCostUsd // 0)}]
+    )
+    | map(select(.cost > 0))
+    | sort_by(-.cost)
+    | .[0:10]
+  )
+}')
+
 if [[ "$OUTPUT" == json ]]; then
   echo "$report"
   exit 0
@@ -493,6 +509,21 @@ if print_check_status "unusedEips" "$section"; then
     echo "$section" | jq -r '.items[] |
       "#   aws ec2 release-address --allocation-id \(.allocationId)"'
   fi
+fi
+
+# --- Top monthly waste (cross-section ranking) ---
+top_count=$(echo "$report" | jq '.topWaste | length')
+if (( top_count > 0 )); then
+  print_header "Top monthly waste (across all categories)"
+  rank=0
+  echo "$report" | jq -r '.topWaste[] |
+    [.type, .id, .name,
+     ((.cost // 0) | "$\(. * 100 | round / 100)/mo")
+    ] | @tsv' \
+  | while IFS=$'\t' read -r type id name cost; do
+      rank=$(( rank + 1 ))
+      printf '  %2d. %-17s %-46.46s %-26.26s %s\n' "$rank" "$type" "$id" "$name" "$cost"
+    done
 fi
 
 # --- Summary ---

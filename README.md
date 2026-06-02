@@ -79,6 +79,9 @@ AWS_PROFILE=staging AWS_REGION=us-east-1 ./discover/ecs-overview.sh
 # Idle resources with rough monthly cost; --with-cleanup-commands prints
 # commented-out remediation commands (no auto-execution)
 ./discover/idle-resources.sh --with-cleanup-commands
+
+# Perimeter sanity audit (permissive SGs, public S3, stale IAM keys)
+./audit/security-baseline.sh
 ```
 
 ## Example output
@@ -112,7 +115,7 @@ Hints:
 | `discover/ecr-bloat-report.sh` | shipped | Ranks ECR repos by image count and flags those with no lifecycle policy |
 | `discover/idle-resources.sh` | shipped | Stopped EC2 (with age + still-billable EBS), empty ECS clusters, ALBs with no targets, unattached EBS, unused EIPs. Each item carries a rough monthly cost; `--with-cleanup-commands` prints commented remediation commands |
 | `audit/cost-hotspots.py` | planned | Cost Explorer query + topology-aware ranking |
-| `audit/security-baseline.sh` | planned | Open SGs, public S3, IAM users with old keys |
+| `audit/security-baseline.sh` | shipped | Permissive SGs (severity-classified), effectively-public S3 buckets, IAM users with access keys older than 180 days. Each check isolated |
 
 See [ROADMAP.md](./ROADMAP.md) for the full sequence.
 

@@ -6,6 +6,9 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `audit/security-baseline.sh` — perimeter sanity audit. Three independent checks: security groups with `0.0.0.0/0` inbound on non-(80/443) ports (severity-classified: critical for `-1`/all-protocols, high for SSH/RDP exposure, medium otherwise), S3 buckets effectively public (Block Public Access off AND a public bucket policy or ACL grant), and IAM users with access keys older than 180 days. Each check runs independently — one IAM permission gap or API error in a single check is reported and does not abort the others. Read-only; supports `--json`.
+
 ### Changed
 - `discover/idle-resources.sh` — each item now carries an estimated monthly cost (ap-northeast-2 hardcoded pricing: per-type EBS GB rates, ALB/NLB base ~$18.40, EIP ~$3.65). Stopped EC2 enriches with attached EBS sizes via a batched `describe-volumes` to compute the still-billable cost. Summary appends `estimated monthly waste`. Adds `--with-cleanup-commands` flag that prints commented-out AWS CLI remediation commands per section — strictly no auto-execution, preserving the read-only guarantee.
 

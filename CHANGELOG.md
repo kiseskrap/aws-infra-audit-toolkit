@@ -6,6 +6,9 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- `discover/idle-resources.sh` — each item now carries an estimated monthly cost (ap-northeast-2 hardcoded pricing: per-type EBS GB rates, ALB/NLB base ~$18.40, EIP ~$3.65). Stopped EC2 enriches with attached EBS sizes via a batched `describe-volumes` to compute the still-billable cost. Summary appends `estimated monthly waste`. Adds `--with-cleanup-commands` flag that prints commented-out AWS CLI remediation commands per section — strictly no auto-execution, preserving the read-only guarantee.
+
 ## [0.2.0] — 2026-05-30
 
 ### Added

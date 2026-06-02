@@ -75,6 +75,10 @@ AWS_PROFILE=staging AWS_REGION=us-east-1 ./discover/ecs-overview.sh
 
 # Rank ECR repos by image count and flag those without a lifecycle policy
 ./discover/ecr-bloat-report.sh
+
+# Idle resources with rough monthly cost; --with-cleanup-commands prints
+# commented-out remediation commands (no auto-execution)
+./discover/idle-resources.sh --with-cleanup-commands
 ```
 
 ## Example output
@@ -106,7 +110,7 @@ Hints:
 | `discover/aurora-ha-audit.sh` | shipped | Flags single-instance Aurora clusters, members crowded in one AZ, and standalone RDS without Multi-AZ |
 | `discover/lambda-eol-scanner.py` | shipped | Flags Lambda functions on EOL or near-EOL runtimes |
 | `discover/ecr-bloat-report.sh` | shipped | Ranks ECR repos by image count and flags those with no lifecycle policy |
-| `discover/idle-resources.sh` | shipped | Stopped EC2 (with age), empty ECS clusters, ALBs with no targets, unattached EBS, unused EIPs |
+| `discover/idle-resources.sh` | shipped | Stopped EC2 (with age + still-billable EBS), empty ECS clusters, ALBs with no targets, unattached EBS, unused EIPs. Each item carries a rough monthly cost; `--with-cleanup-commands` prints commented remediation commands |
 | `audit/cost-hotspots.py` | planned | Cost Explorer query + topology-aware ranking |
 | `audit/security-baseline.sh` | planned | Open SGs, public S3, IAM users with old keys |
 

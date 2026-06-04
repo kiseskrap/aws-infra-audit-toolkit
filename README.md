@@ -77,8 +77,10 @@ AWS_PROFILE=staging AWS_REGION=us-east-1 ./discover/ecs-overview.sh
 ./discover/ecr-bloat-report.sh
 
 # Idle resources with rough monthly cost; --with-cleanup-commands prints
-# commented-out remediation commands (no auto-execution)
-./discover/idle-resources.sh --with-cleanup-commands
+# commented-out remediation commands (no auto-execution).
+# --with-usage cross-checks last-30-day CloudWatch metrics so the
+# DELETE/INVESTIGATE/KEEP recommendation reflects real traffic, not just state
+./discover/idle-resources.sh --with-cleanup-commands --with-usage
 
 # Perimeter sanity audit (permissive SGs, public S3, stale IAM keys)
 ./audit/security-baseline.sh

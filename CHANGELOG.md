@@ -19,6 +19,7 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `lib/format.sh` — shared CSV (`format_csv`) and Markdown (`format_md`) renderers used by tools that support `--format csv` / `--format md`. CSV is RFC 4180-quoted via jq's `@csv`; Markdown replaces pipe characters in values with `&#124;` to avoid jq-regex escape ambiguity. Column order is explicit per call so schemas stay stable across runs.
 - `discover/idle-resources.sh` — unified `--format {table|json|csv|md}` flag. `--json` kept as backward-compatible alias for `--format json`. CSV / Markdown emit a flat one-row-per-item schema across all five categories: `Type,Identifier,Name,MonthlyCostUsd,AgeDays,Owner,Env,Confidence,Recommendation,Usage30d` — the row schema FinOps spreadsheets and weekly review docs actually want. Other tools migrate to `lib/format.sh` in follow-up issues (#27 – #31).
 - `discover/ecs-overview.sh` — same `--format {table|json|csv|md}` flag, `--json` alias preserved. CSV / Markdown schema: `ClusterName,Launch,Services,RunningTasks,PendingTasks,Ec2Instances,Hints`, sorted hint-flagged first (anomalies on top of spreadsheets / doc pastes).
+- `discover/aurora-ha-audit.sh` — same `--format` flag. CSV / Markdown schema: `Identifier,Type,Engine,Version,Class,Members,Azs,Hints`, sorted hint-flagged first.
 
 ## [0.2.0] — 2026-05-30
 

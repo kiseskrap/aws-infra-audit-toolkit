@@ -16,33 +16,51 @@
 # shellcheck source=../lib/common.sh
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/../lib/common.sh"
+# shellcheck source=../lib/format.sh
+source "${SCRIPT_DIR}/../lib/format.sh"
 
 usage() {
   cat <<EOF
 aurora-ha-audit — flag RDS/Aurora resources with HA gaps.
 
 Usage:
-  ${0##*/} [--json] [--help]
+  ${0##*/} [--format <fmt>] [--help]
 
 Options:
-  --json        emit machine-readable JSON instead of a table
+  --format FMT  one of: table (default), json, csv, md
+  --json        alias for --format json (kept for backward compat)
   -h, --help    show this message
 
 Environment:
   AWS_PROFILE   AWS profile to use (default: \$AWS_PROFILE or 'default')
   AWS_REGION    region to query    (default: configured region)
   NO_COLOR=1    disable ANSI colors
+
+CSV / Markdown schema (one row per cluster or standalone instance):
+  Identifier,Type,Engine,Version,Class,Members,Azs,Hints
 EOF
 }
 
 OUTPUT=table
+prev=""
 for arg in "$@"; do
+  if [[ "$prev" == "--format" ]]; then
+    OUTPUT=$arg; prev=""
+    continue
+  fi
   case "$arg" in
+    --format) prev=--format ;;
     --json) OUTPUT=json ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $arg (try --help)" ;;
   esac
 done
+[[ "$prev" == "--format" ]] && die "--format requires a value (one of: table, json, csv, md)"
+
+case "$OUTPUT" in
+  table|json|csv|md) ;;
+  *) die "unknown --format '$OUTPUT' (one of: table, json, csv, md)" ;;
+esac
 
 require_cmd aws
 require_cmd jq
@@ -114,6 +132,34 @@ enriched=$(jq -n \
 
 if [[ "$OUTPUT" == json ]]; then
   echo "$enriched"
+  exit 0
+fi
+
+# CSV / Markdown: hint-flagged first (same as table) so HA gaps are at the
+# top of a spreadsheet open or doc paste.
+build_flat_rows() {
+  echo "$enriched" | jq '
+    sort_by((.hints | length) * -1, .id)
+    | map({
+        Identifier: .id,
+        Type:       .type,
+        Engine:     .engine,
+        Version:    .version,
+        Class:      .class,
+        Members:    .memberCount,
+        Azs:        .azs,
+        Hints:      (.hints | join(", "))
+      })
+  '
+}
+FLAT_COLS="Identifier,Type,Engine,Version,Class,Members,Azs,Hints"
+
+if [[ "$OUTPUT" == csv ]]; then
+  build_flat_rows | format_csv "$FLAT_COLS"
+  exit 0
+fi
+if [[ "$OUTPUT" == md ]]; then
+  build_flat_rows | format_md "$FLAT_COLS"
   exit 0
 fi
 

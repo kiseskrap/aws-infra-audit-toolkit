@@ -91,6 +91,48 @@ PRICING_JSON='{
   "eip_monthly": 3.65
 }'
 
+# jq helper — case-insensitive canonical tag extraction. AWS responses are
+# inconsistent: EC2/EBS/EIP/ELB use {Key,Value}, ECS uses {key,value}. The
+# helper tolerates both so each check can call canonical_tags(.tags) uniformly.
+# Also exposes age_days(iso) for createdAt → age in days, swallowing parse
+# errors so a malformed timestamp doesn't break the whole report.
+TAG_HELPER='
+def _tag_value(tags; want):
+  (tags // [])
+  | map({k: ((.Key // .key) // ""), v: ((.Value // .value) // "")})
+  | map(select((.k | ascii_downcase) == (want | ascii_downcase)))
+  | first | (.v // null);
+
+def canonical_tags(tags):
+  {
+    owner:     (_tag_value(tags; "owner") // _tag_value(tags; "team") // _tag_value(tags; "owneremail")),
+    env:       (_tag_value(tags; "environment") // _tag_value(tags; "env") // _tag_value(tags; "stage")),
+    createdAt: (_tag_value(tags; "createdat") // _tag_value(tags; "created") // _tag_value(tags; "creationdate")),
+    name:      _tag_value(tags; "name")
+  };
+
+def age_days(iso):
+  if iso == null then null
+  else
+    # Normalize AWS timestamp variants jq fromdateiso8601 cannot parse:
+    # convert "+00:00" → "Z" first, then strip fractional seconds. Order
+    # matters — stripping fractional seconds before the offset fix would
+    # leave the "+00:00" suffix intact and still fail to parse.
+    (iso | tostring
+         | sub("\\+00:00$"; "Z")
+         | sub("\\.[0-9]+Z$"; "Z"))
+    | (try fromdateiso8601 catch null)
+    | if . == null then null else ((now - .) / 86400 | floor) end
+  end;
+
+def tag_summary(t; age):
+  [
+    (if t.owner then "owner=\(t.owner)" else empty end),
+    (if t.env   then "env=\(t.env)"     else empty end),
+    (if age    then "age=\(age)d"      else empty end)
+  ] | if length == 0 then null else join(" ") end;
+'
+
 # -----------------------------------------------------------------------------
 # Check functions. Each prints a JSON array on stdout. Exit non-zero on failure
 # (stderr is captured by the caller and surfaced in the report).
@@ -106,7 +148,8 @@ check_stopped_ec2() {
       name:       Tags[?Key==`Name`] | [0].Value,
       launched:   LaunchTime,
       stopReason: StateTransitionReason,
-      volumeIds:  BlockDeviceMappings[].Ebs.VolumeId
+      volumeIds:  BlockDeviceMappings[].Ebs.VolumeId,
+      rawTags:    Tags
     }' --output json) || return 1
 
   # Stopped EC2 is free; the cost is its still-attached EBS. Fetch sizes/types
@@ -127,37 +170,40 @@ check_stopped_ec2() {
   jq -n \
     --argjson instances "$instances" \
     --argjson volumes   "$volumes" \
-    --argjson pricing   "$PRICING_JSON" '
+    --argjson pricing   "$PRICING_JSON" "
+    $TAG_HELPER
+
     # AWS encodes the stop time inside StateTransitionReason as
-    # "User initiated (2025-03-15 14:30:00 GMT)". Extract that, fall back to null.
+    # \"User initiated (2025-03-15 14:30:00 GMT)\". Extract that, fall back to null.
     def parse_stopped_at:
-      (capture("\\((?<d>\\d{4}-\\d{2}-\\d{2}) (?<t>\\d{2}:\\d{2}:\\d{2}) GMT\\)") // null)
-      | if . then "\(.d)T\(.t)Z" else null end;
+      (capture(\"\\\\((?<d>\\\\d{4}-\\\\d{2}-\\\\d{2}) (?<t>\\\\d{2}:\\\\d{2}:\\\\d{2}) GMT\\\\)\") // null)
+      | if . then \"\\(.d)T\\(.t)Z\" else null end;
 
-    ($volumes | map({(.id): .}) | add // {}) as $by_id |
+    (\$volumes | map({(.id): .}) | add // {}) as \$by_id |
 
-    $instances
+    \$instances
     | map(
-        ((.volumeIds // []) | map($by_id[.] // {size: 0, type: "unknown"})) as $vols
+        ((.volumeIds // []) | map(\$by_id[.] // {size: 0, type: \"unknown\"})) as \$vols
         | . + {
-            ebsCount: ($vols | length),
-            ebsGb:    ($vols | map(.size) | add // 0),
+            ebsCount: (\$vols | length),
+            ebsGb:    (\$vols | map(.size) | add // 0),
             monthlyCostUsd: (
-              [ $vols[] |
-                .size * ($pricing.ebs_per_gb_month[.type]
-                         // $pricing.ebs_fallback_per_gb_month)
+              [ \$vols[] |
+                .size * (\$pricing.ebs_per_gb_month[.type]
+                         // \$pricing.ebs_fallback_per_gb_month)
               ] | add // 0
             ),
-            stoppedAt: ((.stopReason // "") | parse_stopped_at),
+            stoppedAt: ((.stopReason // \"\") | parse_stopped_at),
             ageDays: (
-              ((.stopReason // "") | parse_stopped_at) as $s
-              | if $s then ((now - ($s | fromdateiso8601)) / 86400 | floor) else null end
-            )
+              ((.stopReason // \"\") | parse_stopped_at) as \$s
+              | if \$s then ((now - (\$s | fromdateiso8601)) / 86400 | floor) else null end
+            ),
+            tags: canonical_tags(.rawTags)
           }
-        | del(.volumeIds)
+        | del(.volumeIds, .rawTags)
       )
     | sort_by(-(.monthlyCostUsd))
-  '
+  "
 }
 
 check_empty_ecs_clusters() {
@@ -189,19 +235,22 @@ check_empty_ecs_clusters() {
       chunk+=("${names[$j]}")
     done
     local batch
-    batch=$(aws ecs describe-clusters --clusters "${chunk[@]}" \
-      --query 'clusters[?activeServicesCount==`0` && runningTasksCount==`0` && pendingTasksCount==`0`].{name: clusterName}' \
+    batch=$(aws ecs describe-clusters --clusters "${chunk[@]}" --include TAGS \
+      --query 'clusters[?activeServicesCount==`0` && runningTasksCount==`0` && pendingTasksCount==`0`].{name: clusterName, rawTags: tags}' \
       --output json) || return 1
     result=$(jq -n --argjson a "$result" --argjson b "$batch" '$a + $b')
     i=$end
   done
-  echo "$result"
+  echo "$result" | jq "
+    $TAG_HELPER
+    map(. + {tags: canonical_tags(.rawTags)} | del(.rawTags))
+  "
 }
 
 check_empty_load_balancers() {
   local lbs
   lbs=$(aws elbv2 describe-load-balancers \
-    --query 'LoadBalancers[].{name: LoadBalancerName, arn: LoadBalancerArn, type: Type, scheme: Scheme}' \
+    --query 'LoadBalancers[].{name: LoadBalancerName, arn: LoadBalancerArn, type: Type, scheme: Scheme, createdAt: CreatedTime}' \
     --output json) || return 1
 
   local count
@@ -249,7 +298,38 @@ check_empty_load_balancers() {
     fi
   done < <(echo "$lbs" | jq -c '.[]')
 
-  echo "$result" | jq 'sort_by(-(.monthlyCostUsd // 0))'
+  # ELB v2 doesn't surface tags in describe-load-balancers — fetch them in a
+  # single batched call (max 20 ARNs each) and merge in. Only for the empty
+  # ones, not every LB, so the extra calls are proportional to actionable
+  # findings.
+  local arns
+  arns=$(echo "$result" | jq -r '.[].arn')
+  local tags_map='{}'
+  if [[ -n "$arns" ]]; then
+    local arn_arr=()
+    while IFS= read -r a; do [[ -n "$a" ]] && arn_arr+=("$a"); done <<< "$arns"
+    local fetched='[]'
+    local total=${#arn_arr[@]}
+    local idx=0
+    while (( idx < total )); do
+      local batch_end=$(( idx + 20 ))
+      (( batch_end > total )) && batch_end=$total
+      local chunk=()
+      for (( j=idx; j<batch_end; j++ )); do chunk+=("${arn_arr[$j]}"); done
+      local b
+      b=$(aws elbv2 describe-tags --resource-arns "${chunk[@]}" \
+        --query 'TagDescriptions[].{arn:ResourceArn,tags:Tags}' --output json 2>/dev/null) || break
+      fetched=$(jq -n --argjson a "$fetched" --argjson b "$b" '$a + $b')
+      idx=$batch_end
+    done
+    tags_map=$(echo "$fetched" | jq 'map({(.arn): .tags}) | add // {}')
+  fi
+
+  echo "$result" | jq --argjson tagsmap "$tags_map" "
+    $TAG_HELPER
+    map(. + {tags: canonical_tags(\$tagsmap[.arn] // [])})
+    | sort_by(-(.monthlyCostUsd // 0))
+  "
 }
 
 check_available_ebs() {
@@ -260,30 +340,37 @@ check_available_ebs() {
       size:    Size,
       type:    VolumeType,
       az:      AvailabilityZone,
-      created: CreateTime
+      created: CreateTime,
+      rawTags: Tags
     }' --output json \
-  | jq --argjson pricing "$PRICING_JSON" '
+  | jq --argjson pricing "$PRICING_JSON" "
+      $TAG_HELPER
       map(. + {
-        monthlyCostUsd: (.size * ($pricing.ebs_per_gb_month[.type]
-                                   // $pricing.ebs_fallback_per_gb_month))
-      })
+        monthlyCostUsd: (.size * (\$pricing.ebs_per_gb_month[.type]
+                                   // \$pricing.ebs_fallback_per_gb_month)),
+        tags:    canonical_tags(.rawTags),
+        ageDays: age_days(.created)
+      } | del(.rawTags))
       | sort_by(-(.monthlyCostUsd))
-    '
+    "
 }
 
 check_unused_eips() {
   aws ec2 describe-addresses --output json 2>/dev/null \
-  | jq --argjson pricing "$PRICING_JSON" '
+  | jq --argjson pricing "$PRICING_JSON" "
+    $TAG_HELPER
     .Addresses
     | map(select(.AssociationId == null))
     | map({
-        publicIp: .PublicIp,
-        allocationId: .AllocationId,
-        domain: .Domain,
-        monthlyCostUsd: $pricing.eip_monthly
+        publicIp:       .PublicIp,
+        allocationId:   .AllocationId,
+        domain:         .Domain,
+        monthlyCostUsd: \$pricing.eip_monthly,
+        tags:           canonical_tags(.Tags)
       })
-  '
+  "
 }
+
 
 # -----------------------------------------------------------------------------
 # Runner: isolate each check, capture errors, build a unified JSON document.
@@ -384,6 +471,20 @@ print_check_status() {
   return 0
 }
 
+# Emit a dim continuation line under a primary table row when there's tag info
+# worth showing. Centralizes the format so all five sections stay visually
+# consistent. Empty arg → no-op (clean rows stay one line).
+print_tag_line() {
+  local tagsum=$1
+  # Important: do NOT let an empty tagsum bubble out as exit 1 — set -e +
+  # pipefail in common.sh would then kill the surrounding `jq | while read`
+  # pipeline after the very first row.
+  if [[ -n "$tagsum" ]]; then
+    printf '%s       └─ %s%s\n' "$C_DIM" "$tagsum" "$C_RESET"
+  fi
+  return 0
+}
+
 # Header
 printf '%sIdle resources audit%s — account %s, region %s\n' \
   "$C_BOLD" "$C_RESET" "$account" "$region"
@@ -400,15 +501,22 @@ if print_check_status "stoppedEc2" "$section"; then
       [.id, .type, (.name // "-"), (.stoppedAt // "?"),
        (if .ageDays then "\(.ageDays)d" else "?" end),
        "\(.ebsCount)v/\(.ebsGb)GB",
-       ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo")
+       ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo"),
+       (
+         [
+           (if .tags.owner then "owner=\(.tags.owner)" else empty end),
+           (if .tags.env   then "env=\(.tags.env)"     else empty end)
+         ] | join(" ")
+       )
       ] | @tsv' \
-    | while IFS=$'\t' read -r id type name stopped age ebs cost; do
+    | while IFS=$'\t' read -r id type name stopped age ebs cost tagsum; do
         flag=""
         if [[ "$age" =~ ^([0-9]+)d$ ]] && (( BASH_REMATCH[1] > 30 )); then
           flag="${C_YELLOW}[!] >30d${C_RESET}"
         fi
         printf '  %-21s %-12s %-25s %-21s %-5s %-10s %-12s %s\n' \
           "$id" "$type" "$name" "$stopped" "$age" "$ebs" "$cost" "$flag"
+        print_tag_line "$tagsum"
       done
   fi
   if (( WITH_CLEANUP )) && (( count > 0 )); then
@@ -426,9 +534,19 @@ if print_check_status "emptyEcsClusters" "$section"; then
   if (( count == 0 )); then
     printf '%s(none)%s\n' "$C_DIM" "$C_RESET"
   else
-    echo "$section" | jq -r '.items[] | .name' | while read -r n; do
-      printf '  %s\n' "$n"
-    done
+    echo "$section" | jq -r '.items[] |
+      [.name,
+       (
+         [
+           (if .tags.owner then "owner=\(.tags.owner)" else empty end),
+           (if .tags.env   then "env=\(.tags.env)"     else empty end)
+         ] | join(" ")
+       )
+      ] | @tsv' \
+    | while IFS=$'\t' read -r n tagsum; do
+        printf '  %s\n' "$n"
+        print_tag_line "$tagsum"
+      done
     printf '%s    (empty clusters have no direct cost; flagged as resource sprawl)%s\n' "$C_DIM" "$C_RESET"
   fi
   if (( WITH_CLEANUP )) && (( count > 0 )); then
@@ -447,11 +565,31 @@ if print_check_status "emptyLoadBalancers" "$section"; then
     printf '%s(none)%s\n' "$C_DIM" "$C_RESET"
   else
     echo "$section" | jq -r '.items[] |
+      # Guard against parse failures: parse first, then only compute age when
+      # the result is a real epoch. ELB CreatedTime comes through as
+      # "...Z+00:00" with fractional seconds; jq fromdateiso8601 needs the
+      # offset converted to Z and the fractional seconds stripped, in that
+      # order.
+      (((.createdAt // "")
+         | sub("\\+00:00$"; "Z")
+         | sub("\\.[0-9]+Z$"; "Z")
+         | (try fromdateiso8601 catch null))) as $epoch |
       [.name, .type, .scheme,
-       ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo")
+       ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo"),
+       (
+         [
+           (if .tags.owner then "owner=\(.tags.owner)" else empty end),
+           (if .tags.env   then "env=\(.tags.env)"     else empty end),
+           (if $epoch then
+              (((now - $epoch) / 86400 | floor) as $d
+               | if $d > 0 then "age=\($d)d" else empty end)
+            else empty end)
+         ] | join(" ")
+       )
       ] | @tsv' \
-    | while IFS=$'\t' read -r n t s cost; do
+    | while IFS=$'\t' read -r n t s cost tagsum; do
         printf '  %-40s %-12s %-16s %s\n' "$n" "$t" "$s" "$cost"
+        print_tag_line "$tagsum"
       done
   fi
   if (( WITH_CLEANUP )) && (( count > 0 )); then
@@ -473,10 +611,18 @@ if print_check_status "availableEbs" "$section"; then
   else
     echo "$section" | jq -r '.items[] |
       [.id, .type, "\(.size)GiB", .az, .created,
-       ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo")
+       ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo"),
+       (
+         [
+           (if .tags.owner then "owner=\(.tags.owner)" else empty end),
+           (if .tags.env   then "env=\(.tags.env)"     else empty end),
+           (if .ageDays    then "age=\(.ageDays)d"     else empty end)
+         ] | join(" ")
+       )
       ] | @tsv' \
-    | while IFS=$'\t' read -r id type size az created cost; do
+    | while IFS=$'\t' read -r id type size az created cost tagsum; do
         printf '  %-22s %-6s %-9s %-15s %-22s %s\n' "$id" "$type" "$size" "$az" "$created" "$cost"
+        print_tag_line "$tagsum"
       done
     printf '%s    total: %s GiB across %d volumes, ~$%s/mo%s\n' \
       "$C_DIM" "$total_gb" "$count" "$total_cost" "$C_RESET"
@@ -498,10 +644,17 @@ if print_check_status "unusedEips" "$section"; then
   else
     echo "$section" | jq -r '.items[] |
       [.publicIp, .allocationId, .domain,
-       ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo")
+       ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo"),
+       (
+         [
+           (if .tags.owner then "owner=\(.tags.owner)" else empty end),
+           (if .tags.env   then "env=\(.tags.env)"     else empty end)
+         ] | join(" ")
+       )
       ] | @tsv' \
-    | while IFS=$'\t' read -r ip aid dom cost; do
+    | while IFS=$'\t' read -r ip aid dom cost tagsum; do
         printf '  %-18s %-30s %-8s %s\n' "$ip" "$aid" "$dom" "$cost"
+        print_tag_line "$tagsum"
       done
   fi
   if (( WITH_CLEANUP )) && (( count > 0 )); then

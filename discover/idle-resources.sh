@@ -20,23 +20,32 @@
 # shellcheck source=../lib/common.sh
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/../lib/common.sh"
+# shellcheck source=../lib/format.sh
+source "${SCRIPT_DIR}/../lib/format.sh"
 
 usage() {
   cat <<EOF
 idle-resources - find AWS resources likely costing money for no benefit.
 
 Usage:
-  ${0##*/} [--json] [--with-cleanup-commands] [--with-usage] [--help]
+  ${0##*/} [--format <fmt>] [--with-cleanup-commands] [--with-usage] [--help]
 
 Options:
-  --json                     emit machine-readable JSON instead of a table
+  --format FMT               one of: table (default, human-readable, color),
+                             json (machine-readable, full nested structure),
+                             csv  (flat one-row-per-item schema, FinOps-friendly),
+                             md   (Markdown pipe table, pasteable into docs)
+  --json                     alias for --format json (kept for backward compat)
   --with-cleanup-commands    print commented-out AWS CLI remediation commands
-                             below each section (no auto-execution)
+                             below each section (no auto-execution; table only)
   --with-usage               cross-check CloudWatch metrics over the last 30
                              days (LB request count). Sharpens the
                              DELETE/INVESTIGATE/KEEP recommendation but adds
                              ~1 API call per LB. Default off
   -h, --help                 show this message
+
+CSV / Markdown schema (one row per item, type-prefixed):
+  Type,Identifier,Name,MonthlyCostUsd,AgeDays,Owner,Env,Confidence,Recommendation,Usage30d
 
 Environment:
   AWS_PROFILE   AWS profile to use (default: \$AWS_PROFILE or 'default')
@@ -52,8 +61,16 @@ EOF
 OUTPUT=table
 WITH_CLEANUP=0
 WITH_USAGE=0
+# Two-pass arg parse so --format <value> works the same way as a single-token
+# flag like --json. Avoids ad-hoc state machines.
+prev=""
 for arg in "$@"; do
+  if [[ "$prev" == "--format" ]]; then
+    OUTPUT=$arg; prev=""
+    continue
+  fi
   case "$arg" in
+    --format) prev=--format ;;
     --json) OUTPUT=json ;;
     --with-cleanup-commands) WITH_CLEANUP=1 ;;
     --with-usage) WITH_USAGE=1 ;;
@@ -61,6 +78,12 @@ for arg in "$@"; do
     *) die "unknown argument: $arg (try --help)" ;;
   esac
 done
+[[ "$prev" == "--format" ]] && die "--format requires a value (one of: table, json, csv, md)"
+
+case "$OUTPUT" in
+  table|json|csv|md) ;;
+  *) die "unknown --format '$OUTPUT' (one of: table, json, csv, md)" ;;
+esac
 
 require_cmd aws
 require_cmd jq
@@ -558,6 +581,46 @@ report=$(echo "$report" | jq '. + {
 
 if [[ "$OUTPUT" == json ]]; then
   echo "$report"
+  exit 0
+fi
+
+# Flatten the per-category nested report into one row per item with a
+# consistent schema. CSV / Markdown consumers (FinOps spreadsheets, weekly
+# review docs) get the same columns regardless of source category, which is
+# the whole point of those formats.
+build_flat_rows() {
+  echo "$report" | jq '
+    def row($type; $id; $name):
+      {
+        Type:           $type,
+        Identifier:     $id,
+        Name:           ($name // ""),
+        MonthlyCostUsd: ((.monthlyCostUsd // 0) * 100 | round / 100),
+        AgeDays:        (.ageDays // ""),
+        Owner:          (.tags.owner // ""),
+        Env:            (.tags.env   // ""),
+        Confidence:     (.confidence // ""),
+        Recommendation: (.recommendation // ""),
+        Usage30d:       (.usage30d   // "")
+      };
+
+      ((.checks.stoppedEc2.items         // []) | map(row("EC2-stopped";       .id;           (.name // ""))))
+    + ((.checks.emptyEcsClusters.items   // []) | map(row("ECS-empty-cluster"; .name;         .name)))
+    + ((.checks.emptyLoadBalancers.items // []) | map(row("LB-empty";          .arn;          .name)))
+    + ((.checks.availableEbs.items       // []) | map(row("EBS-unattached";    .id;           "\(.size)GiB \(.type)")))
+    + ((.checks.unusedEips.items         // []) | map(row("EIP-unused";        .allocationId; .publicIp)))
+    | sort_by(- .MonthlyCostUsd)
+  '
+}
+
+FLAT_COLS="Type,Identifier,Name,MonthlyCostUsd,AgeDays,Owner,Env,Confidence,Recommendation,Usage30d"
+
+if [[ "$OUTPUT" == csv ]]; then
+  build_flat_rows | format_csv "$FLAT_COLS"
+  exit 0
+fi
+if [[ "$OUTPUT" == md ]]; then
+  build_flat_rows | format_md "$FLAT_COLS"
   exit 0
 fi
 

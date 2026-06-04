@@ -12,6 +12,7 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - `discover/idle-resources.sh` — each item now carries an estimated monthly cost (ap-northeast-2 hardcoded pricing: per-type EBS GB rates, ALB/NLB base ~$18.40, EIP ~$3.65). Stopped EC2 enriches with attached EBS sizes via a batched `describe-volumes` to compute the still-billable cost. Summary appends `estimated monthly waste`. Adds `--with-cleanup-commands` flag that prints commented-out AWS CLI remediation commands per section — strictly no auto-execution, preserving the read-only guarantee.
 - `discover/idle-resources.sh` — appended a cross-section **Top monthly waste** ranking that aggregates every non-zero-cost item across all categories and lists the top 10 by `$/mo` desc. Same data also exposed as `topWaste` in `--json` output so downstream consumers can rank without re-computing.
+- `discover/idle-resources.sh` — each idle item now carries `tags.owner` / `tags.env` / `tags.createdAt`, surfaced as a compact `└─ owner=X env=Y age=Nd` continuation line under the primary row when tag data is available. Lookup is case-insensitive and tolerant of AWS's shape inconsistency ({Key,Value} for EC2/EBS/EIP/ELB vs {key,value} for ECS). LBs fetch tags in a single batched `elbv2 describe-tags` call (≤20 ARNs each) after the empty-set is known, so the extra calls are proportional to actionable findings, not total LB count. Full `tags` object exposed in `--json` for every item.
 
 ## [0.2.0] — 2026-05-30
 

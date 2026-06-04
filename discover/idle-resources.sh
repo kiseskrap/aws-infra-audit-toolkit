@@ -26,12 +26,16 @@ usage() {
 idle-resources - find AWS resources likely costing money for no benefit.
 
 Usage:
-  ${0##*/} [--json] [--with-cleanup-commands] [--help]
+  ${0##*/} [--json] [--with-cleanup-commands] [--with-usage] [--help]
 
 Options:
   --json                     emit machine-readable JSON instead of a table
   --with-cleanup-commands    print commented-out AWS CLI remediation commands
                              below each section (no auto-execution)
+  --with-usage               cross-check CloudWatch metrics over the last 30
+                             days (LB request count). Sharpens the
+                             DELETE/INVESTIGATE/KEEP recommendation but adds
+                             ~1 API call per LB. Default off
   -h, --help                 show this message
 
 Environment:
@@ -47,10 +51,12 @@ EOF
 
 OUTPUT=table
 WITH_CLEANUP=0
+WITH_USAGE=0
 for arg in "$@"; do
   case "$arg" in
     --json) OUTPUT=json ;;
     --with-cleanup-commands) WITH_CLEANUP=1 ;;
+    --with-usage) WITH_USAGE=1 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $arg (try --help)" ;;
   esac
@@ -63,6 +69,12 @@ require_aws_credentials
 account=$(aws_account_id)
 region=$(aws_region)
 [[ -n "$region" ]] || die "no region configured (set AWS_REGION or 'aws configure set region')"
+
+# 30-day window for CloudWatch lookups. Computed via jq for cross-platform
+# compatibility — macOS `date -v-30d` and GNU `date -d "30 days ago"` use
+# different flags, so just delegate to jq's strftime.
+USAGE_END=$(jq -nr 'now | strftime("%Y-%m-%dT%H:%M:%SZ")')
+USAGE_START=$(jq -nr '(now - 30*86400) | strftime("%Y-%m-%dT%H:%M:%SZ")')
 
 # Rough monthly cost estimates, ap-northeast-2 (Seoul), USD. These are
 # intentionally simplified — ALB/NLB excludes LCU charges, EBS excludes IOPS
@@ -133,6 +145,68 @@ def tag_summary(t; age):
   ] | if length == 0 then null else join(" ") end;
 '
 
+# jq helper — turn an item record into a {confidence, recommendation} pair.
+# The inputs are loose: ageDays/monthlyCostUsd/usage30d/tags fields that
+# each check fills in to whatever degree it can. usage30d is the key signal —
+# null means "we did not measure" (default for LBs without --with-usage),
+# 0 means "definitively no traffic" (intrinsic to stopped EC2 / unattached EBS
+# / unassociated EIP / empty ECS cluster, and to LBs that did measure 0).
+#
+# The scoring is intentionally simple and transparent so the field can read
+# the algorithm in one screen. It ranks; it does not predict.
+CONFIDENCE_HELPER='
+def score_record:
+  ((.ageDays // 0) | if type == "number" then . else 0 end)        as $age  |
+  ((.monthlyCostUsd // 0) | if type == "number" then . else 0 end) as $cost |
+  .usage30d                                                          as $u    |
+  (
+    50
+    + (if $u == 0 then 30 else 0 end)
+    + (if $age >= 90 then 20 elif $age >= 30 then 10 else 0 end)
+    + (if $cost > 0 then 5 else 0 end)
+  ) as $raw |
+  ($raw | if . > 100 then 100 elif . < 0 then 0 else . end) as $score |
+  {
+    confidence: $score,
+    recommendation: (
+      if $score >= 80 then "DELETE"
+      elif $score >= 50 then "INVESTIGATE"
+      else "KEEP" end
+    )
+  };
+'
+
+# Fetch the 30-day Sum of the relevant CloudWatch metric for one load
+# balancer. ALB → RequestCount, NLB → ActiveFlowCount. Prints a JSON number
+# (or 0 if no datapoints), or "null" when the LB type is unrecognized or
+# the API call fails — null signals "did not measure" to the scorer so it
+# avoids giving the "zero traffic" boost on missing data.
+fetch_lb_usage30d() {
+  local arn=$1
+  local dim_value=${arn##*loadbalancer/}
+  local ns metric
+  case "$dim_value" in
+    app/*) ns="AWS/ApplicationELB"; metric="RequestCount"   ;;
+    net/*) ns="AWS/NetworkELB";     metric="ActiveFlowCount" ;;
+    *)     printf 'null'; return 0 ;;
+  esac
+  local result
+  if ! result=$(aws cloudwatch get-metric-statistics \
+        --namespace "$ns" \
+        --metric-name "$metric" \
+        --start-time "$USAGE_START" \
+        --end-time "$USAGE_END" \
+        --period 86400 \
+        --statistics Sum \
+        --dimensions "Name=LoadBalancer,Value=$dim_value" \
+        --query 'Datapoints[].Sum' \
+        --output json 2>/dev/null); then
+    printf 'null'
+    return 0
+  fi
+  printf '%s' "$result" | jq 'add // 0' 2>/dev/null || printf 'null'
+}
+
 # -----------------------------------------------------------------------------
 # Check functions. Each prints a JSON array on stdout. Exit non-zero on failure
 # (stderr is captured by the caller and surfaced in the report).
@@ -198,7 +272,8 @@ check_stopped_ec2() {
               ((.stopReason // \"\") | parse_stopped_at) as \$s
               | if \$s then ((now - (\$s | fromdateiso8601)) / 86400 | floor) else null end
             ),
-            tags: canonical_tags(.rawTags)
+            tags:     canonical_tags(.rawTags),
+            usage30d: 0
           }
         | del(.volumeIds, .rawTags)
       )
@@ -243,7 +318,7 @@ check_empty_ecs_clusters() {
   done
   echo "$result" | jq "
     $TAG_HELPER
-    map(. + {tags: canonical_tags(.rawTags)} | del(.rawTags))
+    map(. + {tags: canonical_tags(.rawTags), usage30d: 0} | del(.rawTags))
   "
 }
 
@@ -325,9 +400,33 @@ check_empty_load_balancers() {
     tags_map=$(echo "$fetched" | jq 'map({(.arn): .tags}) | add // {}')
   fi
 
-  echo "$result" | jq --argjson tagsmap "$tags_map" "
+  # Optionally pull a 30-day usage signal per LB. This is the only category
+  # where the idle state alone (no targets) doesn't fully imply zero usage —
+  # callers can still hit the LB directly. The metric tells us if anyone is.
+  local usage_map='{}'
+  if (( WITH_USAGE )); then
+    local usage_pairs="" arns_for_usage
+    arns_for_usage=$(echo "$result" | jq -r '.[].arn')
+    local i=0
+    local lb_count
+    lb_count=$(echo "$result" | jq 'length')
+    while IFS= read -r arn; do
+      [[ -z "$arn" ]] && continue
+      i=$(( i + 1 ))
+      progress "[3/5] load balancers: [$i/$lb_count] usage lookup"
+      local u
+      u=$(fetch_lb_usage30d "$arn")
+      usage_pairs+="$(jq -nc --arg a "$arn" --argjson u "$u" '{($a): $u}')"$'\n'
+    done <<< "$arns_for_usage"
+    usage_map=$(printf '%s' "$usage_pairs" | jq -s 'add // {}')
+  fi
+
+  echo "$result" | jq --argjson tagsmap "$tags_map" --argjson usagemap "$usage_map" --argjson with_usage "$WITH_USAGE" "
     $TAG_HELPER
-    map(. + {tags: canonical_tags(\$tagsmap[.arn] // [])})
+    map(. + {
+      tags:     canonical_tags(\$tagsmap[.arn] // []),
+      usage30d: (if \$with_usage == 1 then (\$usagemap[.arn]) else null end)
+    })
     | sort_by(-(.monthlyCostUsd // 0))
   "
 }
@@ -348,8 +447,9 @@ check_available_ebs() {
       map(. + {
         monthlyCostUsd: (.size * (\$pricing.ebs_per_gb_month[.type]
                                    // \$pricing.ebs_fallback_per_gb_month)),
-        tags:    canonical_tags(.rawTags),
-        ageDays: age_days(.created)
+        tags:     canonical_tags(.rawTags),
+        ageDays:  age_days(.created),
+        usage30d: 0
       } | del(.rawTags))
       | sort_by(-(.monthlyCostUsd))
     "
@@ -366,7 +466,8 @@ check_unused_eips() {
         allocationId:   .AllocationId,
         domain:         .Domain,
         monthlyCostUsd: \$pricing.eip_monthly,
-        tags:           canonical_tags(.Tags)
+        tags:           canonical_tags(.Tags),
+        usage30d:       0
       })
   "
 }
@@ -427,15 +528,27 @@ report=$(jq -n \
     }
   }')
 
+# Apply the deletion-confidence scorer to every item across every check, in
+# one jq pass. Each check has already set usage30d / ageDays / cost / tags
+# to whatever degree it could; score_record only consumes what's there.
+report=$(echo "$report" | jq "
+  $CONFIDENCE_HELPER
+  .checks.stoppedEc2.items         |= map(. + score_record) |
+  .checks.emptyEcsClusters.items   |= map(. + score_record) |
+  .checks.emptyLoadBalancers.items |= map(. + score_record) |
+  .checks.availableEbs.items       |= map(. + score_record) |
+  .checks.unusedEips.items         |= map(. + score_record)
+")
+
 # Cross-section ranking by monthly cost. Per-section ordering is type-locked,
 # so the cross-cut view here surfaces where the cleanup budget should actually
 # go first — often a $9 EBS or a single $18 ALB beats a dozen $0.10 noise rows.
 report=$(echo "$report" | jq '. + {
   topWaste: (
-    ([(.checks.stoppedEc2.items         // [])[] | {type: "EC2-stopped",      id: .id,                       name: (.name // "-"),                cost: (.monthlyCostUsd // 0)}]
-   + [(.checks.emptyLoadBalancers.items // [])[] | {type: "LB-empty",         id: (.arn // .name),           name: .name,                          cost: (.monthlyCostUsd // 0)}]
-   + [(.checks.availableEbs.items       // [])[] | {type: "EBS-unattached",   id: .id,                       name: "\(.size)GiB \(.type)",         cost: (.monthlyCostUsd // 0)}]
-   + [(.checks.unusedEips.items         // [])[] | {type: "EIP-unused",       id: .allocationId,             name: .publicIp,                      cost: (.monthlyCostUsd // 0)}]
+    ([(.checks.stoppedEc2.items         // [])[] | {type: "EC2-stopped",      id: .id,                       name: (.name // "-"),                cost: (.monthlyCostUsd // 0), recommendation: .recommendation}]
+   + [(.checks.emptyLoadBalancers.items // [])[] | {type: "LB-empty",         id: (.arn // .name),           name: .name,                          cost: (.monthlyCostUsd // 0), recommendation: .recommendation}]
+   + [(.checks.availableEbs.items       // [])[] | {type: "EBS-unattached",   id: .id,                       name: "\(.size)GiB \(.type)",         cost: (.monthlyCostUsd // 0), recommendation: .recommendation}]
+   + [(.checks.unusedEips.items         // [])[] | {type: "EIP-unused",       id: .allocationId,             name: .publicIp,                      cost: (.monthlyCostUsd // 0), recommendation: .recommendation}]
     )
     | map(select(.cost > 0))
     | sort_by(-.cost)
@@ -485,6 +598,21 @@ print_tag_line() {
   return 0
 }
 
+# Format a deletion-confidence recommendation with the right color. KEEP is
+# dim (avoid drawing the eye), INVESTIGATE is yellow, DELETE is green. Empty
+# input prints "-" so column widths stay aligned. Always returns 0 so the
+# caller's pipeline survives.
+fmt_recommendation() {
+  local r=$1
+  case "$r" in
+    DELETE)      printf '%sDELETE%s'      "$C_GREEN"  "$C_RESET" ;;
+    INVESTIGATE) printf '%sINVESTIGATE%s' "$C_YELLOW" "$C_RESET" ;;
+    KEEP)        printf '%sKEEP%s'        "$C_DIM"    "$C_RESET" ;;
+    *)           printf '-' ;;
+  esac
+  return 0
+}
+
 # Header
 printf '%sIdle resources audit%s — account %s, region %s\n' \
   "$C_BOLD" "$C_RESET" "$account" "$region"
@@ -502,6 +630,7 @@ if print_check_status "stoppedEc2" "$section"; then
        (if .ageDays then "\(.ageDays)d" else "?" end),
        "\(.ebsCount)v/\(.ebsGb)GB",
        ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo"),
+       (.recommendation // ""),
        (
          [
            (if .tags.owner then "owner=\(.tags.owner)" else empty end),
@@ -509,13 +638,10 @@ if print_check_status "stoppedEc2" "$section"; then
          ] | join(" ")
        )
       ] | @tsv' \
-    | while IFS=$'\t' read -r id type name stopped age ebs cost tagsum; do
-        flag=""
-        if [[ "$age" =~ ^([0-9]+)d$ ]] && (( BASH_REMATCH[1] > 30 )); then
-          flag="${C_YELLOW}[!] >30d${C_RESET}"
-        fi
+    | while IFS=$'\t' read -r id type name stopped age ebs cost rec tagsum; do
+        rec_fmt=$(fmt_recommendation "$rec")
         printf '  %-21s %-12s %-25s %-21s %-5s %-10s %-12s %s\n' \
-          "$id" "$type" "$name" "$stopped" "$age" "$ebs" "$cost" "$flag"
+          "$id" "$type" "$name" "$stopped" "$age" "$ebs" "$cost" "$rec_fmt"
         print_tag_line "$tagsum"
       done
   fi
@@ -536,6 +662,7 @@ if print_check_status "emptyEcsClusters" "$section"; then
   else
     echo "$section" | jq -r '.items[] |
       [.name,
+       (.recommendation // ""),
        (
          [
            (if .tags.owner then "owner=\(.tags.owner)" else empty end),
@@ -543,8 +670,9 @@ if print_check_status "emptyEcsClusters" "$section"; then
          ] | join(" ")
        )
       ] | @tsv' \
-    | while IFS=$'\t' read -r n tagsum; do
-        printf '  %s\n' "$n"
+    | while IFS=$'\t' read -r n rec tagsum; do
+        rec_fmt=$(fmt_recommendation "$rec")
+        printf '  %-50s %s\n' "$n" "$rec_fmt"
         print_tag_line "$tagsum"
       done
     printf '%s    (empty clusters have no direct cost; flagged as resource sprawl)%s\n' "$C_DIM" "$C_RESET"
@@ -576,6 +704,11 @@ if print_check_status "emptyLoadBalancers" "$section"; then
          | (try fromdateiso8601 catch null))) as $epoch |
       [.name, .type, .scheme,
        ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo"),
+       (.recommendation // ""),
+       (.usage30d
+         | if . == null then ""
+           elif . == 0 then "req30d=0"
+           else "req30d=\(.)" end),
        (
          [
            (if .tags.owner then "owner=\(.tags.owner)" else empty end),
@@ -587,8 +720,9 @@ if print_check_status "emptyLoadBalancers" "$section"; then
          ] | join(" ")
        )
       ] | @tsv' \
-    | while IFS=$'\t' read -r n t s cost tagsum; do
-        printf '  %-40s %-12s %-16s %s\n' "$n" "$t" "$s" "$cost"
+    | while IFS=$'\t' read -r n t s cost rec usage tagsum; do
+        rec_fmt=$(fmt_recommendation "$rec")
+        printf '  %-40s %-12s %-16s %-10s %s %s\n' "$n" "$t" "$s" "$cost" "$rec_fmt" "$usage"
         print_tag_line "$tagsum"
       done
   fi
@@ -612,6 +746,7 @@ if print_check_status "availableEbs" "$section"; then
     echo "$section" | jq -r '.items[] |
       [.id, .type, "\(.size)GiB", .az, .created,
        ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo"),
+       (.recommendation // ""),
        (
          [
            (if .tags.owner then "owner=\(.tags.owner)" else empty end),
@@ -620,8 +755,10 @@ if print_check_status "availableEbs" "$section"; then
          ] | join(" ")
        )
       ] | @tsv' \
-    | while IFS=$'\t' read -r id type size az created cost tagsum; do
-        printf '  %-22s %-6s %-9s %-15s %-22s %s\n' "$id" "$type" "$size" "$az" "$created" "$cost"
+    | while IFS=$'\t' read -r id type size az created cost rec tagsum; do
+        rec_fmt=$(fmt_recommendation "$rec")
+        printf '  %-22s %-6s %-9s %-15s %-22s %-10s %s\n' \
+          "$id" "$type" "$size" "$az" "$created" "$cost" "$rec_fmt"
         print_tag_line "$tagsum"
       done
     printf '%s    total: %s GiB across %d volumes, ~$%s/mo%s\n' \
@@ -645,6 +782,7 @@ if print_check_status "unusedEips" "$section"; then
     echo "$section" | jq -r '.items[] |
       [.publicIp, .allocationId, .domain,
        ((.monthlyCostUsd // 0) | "$\(. * 100 | round / 100)/mo"),
+       (.recommendation // ""),
        (
          [
            (if .tags.owner then "owner=\(.tags.owner)" else empty end),
@@ -652,8 +790,9 @@ if print_check_status "unusedEips" "$section"; then
          ] | join(" ")
        )
       ] | @tsv' \
-    | while IFS=$'\t' read -r ip aid dom cost tagsum; do
-        printf '  %-18s %-30s %-8s %s\n' "$ip" "$aid" "$dom" "$cost"
+    | while IFS=$'\t' read -r ip aid dom cost rec tagsum; do
+        rec_fmt=$(fmt_recommendation "$rec")
+        printf '  %-18s %-30s %-8s %-10s %s\n' "$ip" "$aid" "$dom" "$cost" "$rec_fmt"
         print_tag_line "$tagsum"
       done
   fi
@@ -671,11 +810,14 @@ if (( top_count > 0 )); then
   rank=0
   echo "$report" | jq -r '.topWaste[] |
     [.type, .id, .name,
-     ((.cost // 0) | "$\(. * 100 | round / 100)/mo")
+     ((.cost // 0) | "$\(. * 100 | round / 100)/mo"),
+     (.recommendation // "")
     ] | @tsv' \
-  | while IFS=$'\t' read -r type id name cost; do
+  | while IFS=$'\t' read -r type id name cost rec; do
       rank=$(( rank + 1 ))
-      printf '  %2d. %-17s %-46.46s %-26.26s %s\n' "$rank" "$type" "$id" "$name" "$cost"
+      rec_fmt=$(fmt_recommendation "$rec")
+      printf '  %2d. %-17s %-46.46s %-26.26s %-10s %s\n' \
+        "$rank" "$type" "$id" "$name" "$cost" "$rec_fmt"
     done
 fi
 
@@ -697,6 +839,32 @@ total_waste=$(echo "$report" | jq -r '
 printf '%s  estimated monthly waste: ~$%s%s (ap-northeast-2 pricing, rough)\n' \
   "$C_BOLD" "$total_waste" "$C_RESET"
 
+# Deletion-confidence breakdown: how many of the flagged items are recommended
+# for DELETE / INVESTIGATE / KEEP. Helps the reader see at a glance whether
+# this is a "do it now" report or a "needs review" report.
+rec_counts=$(echo "$report" | jq -r '
+  [.checks | to_entries[] | select(.value.status == "ok")
+   | .value.items[] | .recommendation]
+  | {
+      del:  (map(select(. == "DELETE"))      | length),
+      inv:  (map(select(. == "INVESTIGATE")) | length),
+      keep: (map(select(. == "KEEP"))        | length)
+    }
+  | "\(.del) \(.inv) \(.keep)"
+')
+# common.sh sets IFS to $'\n\t' — space won't split here without the explicit
+# override, which would lump all three counts into r_del and break the line.
+IFS=' ' read -r r_del r_inv r_keep <<< "$rec_counts"
+printf '%s  recommendations: %s%s DELETE%s / %s%s INVESTIGATE%s / %s%s KEEP%s\n' \
+  "$C_BOLD" \
+  "$C_GREEN" "$r_del" "$C_RESET" \
+  "$C_YELLOW" "$r_inv" "$C_RESET" \
+  "$C_DIM" "$r_keep" "$C_RESET"
+
+if (( ! WITH_USAGE )); then
+  printf '%s  rerun with --with-usage to cross-check load-balancer request counts%s\n' \
+    "$C_DIM" "$C_RESET"
+fi
 if (( ! WITH_CLEANUP )); then
   printf '%s  rerun with --with-cleanup-commands to print remediation commands%s\n' \
     "$C_DIM" "$C_RESET"

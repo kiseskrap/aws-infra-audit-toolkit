@@ -16,16 +16,19 @@
 # shellcheck source=../lib/common.sh
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/../lib/common.sh"
+# shellcheck source=../lib/format.sh
+source "${SCRIPT_DIR}/../lib/format.sh"
 
 usage() {
   cat <<EOF
 security-baseline - perimeter audit (SGs, S3, IAM key age).
 
 Usage:
-  ${0##*/} [--json] [--help]
+  ${0##*/} [--format <fmt>] [--help]
 
 Options:
-  --json        emit machine-readable JSON instead of a table
+  --format FMT  one of: table (default), json, csv, md
+  --json        alias for --format json (kept for backward compat)
   -h, --help    show this message
 
 Environment:
@@ -33,19 +36,34 @@ Environment:
   AWS_REGION    region for the SG check (S3 and IAM are global)
   NO_COLOR=1    disable ANSI colors
 
+CSV / Markdown schema (one row per finding, category-prefixed):
+  Category,Identifier,Name,Severity,Detail
+
 Each check is independent. A permission failure on one check is surfaced
 in the report header; the others still run.
 EOF
 }
 
 OUTPUT=table
+prev=""
 for arg in "$@"; do
+  if [[ "$prev" == "--format" ]]; then
+    OUTPUT=$arg; prev=""
+    continue
+  fi
   case "$arg" in
+    --format) prev=--format ;;
     --json) OUTPUT=json ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $arg (try --help)" ;;
   esac
 done
+[[ "$prev" == "--format" ]] && die "--format requires a value (one of: table, json, csv, md)"
+
+case "$OUTPUT" in
+  table|json|csv|md) ;;
+  *) die "unknown --format '$OUTPUT' (one of: table, json, csv, md)" ;;
+esac
 
 require_cmd aws
 require_cmd jq
@@ -261,6 +279,63 @@ report=$(jq -n \
 
 if [[ "$OUTPUT" == json ]]; then
   echo "$report"
+  exit 0
+fi
+
+# Flatten the three internal checks into a unified one-row-per-finding shape
+# for CSV / Markdown. Severity ordering surfaces the worst rows at the top
+# of the output:
+#   SG critical → SG high → public S3 → SG medium → stale IAM keys
+build_flat_rows() {
+  echo "$report" | jq '
+    ((.checks.permissiveSecurityGroups.items // [])
+      | map({
+          Category:   "SG-permissive",
+          Identifier: .groupId,
+          Name:       .groupName,
+          Severity:   .severity,
+          Detail:     (
+            "vpc=\(.vpcId) proto=\(.protocol) port=" +
+            (if .fromPort == null then "all"
+             elif .fromPort == .toPort then (.fromPort | tostring)
+             else "\(.fromPort)-\(.toPort)" end) +
+            " cidr=\(.cidr)"
+          )
+        }))
+    + ((.checks.publicS3Buckets.items // [])
+      | map({
+          Category:   "S3-public",
+          Identifier: .bucket,
+          Name:       .bucket,
+          Severity:   "critical",
+          Detail:     (.reasons | join(", "))
+        }))
+    + ((.checks.staleIamKeys.items // [])
+      | map({
+          Category:   "IAM-stale-key",
+          Identifier: .accessKeyId,
+          Name:       .user,
+          Severity:   "medium",
+          Detail:     "age=\(.ageDays)d status=\(.status) created=\(.createDate)"
+        }))
+    | sort_by(
+        (if   .Severity == "critical" then 0
+         elif .Severity == "high"     then 1
+         elif .Severity == "medium"   then 2
+         else 3 end),
+        .Category,
+        .Identifier
+      )
+  '
+}
+FLAT_COLS="Category,Identifier,Name,Severity,Detail"
+
+if [[ "$OUTPUT" == csv ]]; then
+  build_flat_rows | format_csv "$FLAT_COLS"
+  exit 0
+fi
+if [[ "$OUTPUT" == md ]]; then
+  build_flat_rows | format_md "$FLAT_COLS"
   exit 0
 fi
 

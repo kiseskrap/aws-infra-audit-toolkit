@@ -21,6 +21,7 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `discover/ecs-overview.sh` — same `--format {table|json|csv|md}` flag, `--json` alias preserved. CSV / Markdown schema: `ClusterName,Launch,Services,RunningTasks,PendingTasks,Ec2Instances,Hints`, sorted hint-flagged first (anomalies on top of spreadsheets / doc pastes).
 - `discover/aurora-ha-audit.sh` — same `--format` flag. CSV / Markdown schema: `Identifier,Type,Engine,Version,Class,Members,Azs,Hints`, sorted hint-flagged first.
 - `discover/ecr-bloat-report.sh` — same `--format` flag. CSV / Markdown schema: `Repository,Images,Untagged,Lifecycle,Hints`, sorted image count desc (matches table view).
+- `audit/security-baseline.sh` — same `--format` flag. CSV / Markdown schema flattens the three internal checks (`SG-permissive` / `S3-public` / `IAM-stale-key`) into a unified one-row-per-finding shape: `Category,Identifier,Name,Severity,Detail`. Severity-ordered output puts critical findings at the top.
 
 ## [0.2.0] — 2026-05-30
 

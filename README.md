@@ -84,6 +84,11 @@ AWS_PROFILE=staging AWS_REGION=us-east-1 ./discover/ecs-overview.sh
 
 # Perimeter sanity audit (permissive SGs, public S3, stale IAM keys)
 ./audit/security-baseline.sh
+
+# Rank AWS services by 30-day Cost Explorer spend, joined with topology
+# counts (ECS, RDS, Lambda, EC2 + EBS/EIP/LB, ECR). Requires
+# ce:GetCostAndUsage in the billing-enabled account.
+./audit/cost-hotspots.py
 ```
 
 ## Example output
@@ -116,7 +121,7 @@ Hints:
 | `discover/lambda-eol-scanner.py` | shipped | Flags Lambda functions on EOL or near-EOL runtimes |
 | `discover/ecr-bloat-report.sh` | shipped | Ranks ECR repos by image count and flags those with no lifecycle policy |
 | `discover/idle-resources.sh` | shipped | Stopped EC2 (with age + still-billable EBS), empty ECS clusters, ALBs with no targets, unattached EBS, unused EIPs. Each item carries a rough monthly cost; `--with-cleanup-commands` prints commented remediation commands |
-| `audit/cost-hotspots.py` | planned | Cost Explorer query + topology-aware ranking |
+| `audit/cost-hotspots.py` | shipped | Ranks AWS services by 30-day Cost Explorer spend joined with per-service topology counts (ECS, RDS, Lambda, EC2, EBS/EIP/LB, ECR). Surfaces high cost-per-resource and services billed without locally-counted resources |
 | `audit/security-baseline.sh` | shipped | Permissive SGs (severity-classified), effectively-public S3 buckets, IAM users with access keys older than 180 days. Each check isolated |
 
 See [ROADMAP.md](./ROADMAP.md) for the full sequence.

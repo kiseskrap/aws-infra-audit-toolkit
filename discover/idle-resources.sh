@@ -22,6 +22,8 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/../lib/common.sh"
 # shellcheck source=../lib/format.sh
 source "${SCRIPT_DIR}/../lib/format.sh"
+# shellcheck source=../lib/table.sh
+source "${SCRIPT_DIR}/../lib/table.sh"
 
 usage() {
   cat <<EOF
@@ -628,11 +630,6 @@ fi
 # Table renderer
 # -----------------------------------------------------------------------------
 
-print_header() {
-  printf '\n%s%s%s\n' "$C_BOLD" "$1" "$C_RESET"
-  printf '%s\n' "$(printf '%.0s─' $(seq 1 ${#1}))"
-}
-
 print_check_status() {
   local label=$1
   local check_json=$2
@@ -682,7 +679,7 @@ printf '%sIdle resources audit%s — account %s, region %s\n' \
 
 # --- Stopped EC2 ---
 section=$(echo "$report" | jq '.checks.stoppedEc2')
-print_header "Stopped EC2 instances"
+table_section_header "Stopped EC2 instances"
 if print_check_status "stoppedEc2" "$section"; then
   count=$(echo "$section" | jq '.items | length')
   if (( count == 0 )); then
@@ -717,7 +714,7 @@ fi
 
 # --- Empty ECS clusters ---
 section=$(echo "$report" | jq '.checks.emptyEcsClusters')
-print_header "Empty ECS clusters (no services, no tasks)"
+table_section_header "Empty ECS clusters (no services, no tasks)"
 if print_check_status "emptyEcsClusters" "$section"; then
   count=$(echo "$section" | jq '.items | length')
   if (( count == 0 )); then
@@ -749,7 +746,7 @@ fi
 
 # --- Empty load balancers ---
 section=$(echo "$report" | jq '.checks.emptyLoadBalancers')
-print_header "Load balancers with no registered targets"
+table_section_header "Load balancers with no registered targets"
 if print_check_status "emptyLoadBalancers" "$section"; then
   count=$(echo "$section" | jq '.items | length')
   if (( count == 0 )); then
@@ -798,7 +795,7 @@ fi
 
 # --- Available EBS ---
 section=$(echo "$report" | jq '.checks.availableEbs')
-print_header "Available (unattached) EBS volumes"
+table_section_header "Available (unattached) EBS volumes"
 if print_check_status "availableEbs" "$section"; then
   count=$(echo "$section" | jq '.items | length')
   total_gb=$(echo "$section" | jq '[.items[].size] | add // 0')
@@ -836,7 +833,7 @@ fi
 
 # --- Unused EIPs ---
 section=$(echo "$report" | jq '.checks.unusedEips')
-print_header "Unassociated Elastic IPs"
+table_section_header "Unassociated Elastic IPs"
 if print_check_status "unusedEips" "$section"; then
   count=$(echo "$section" | jq '.items | length')
   if (( count == 0 )); then
@@ -869,7 +866,7 @@ fi
 # --- Top monthly waste (cross-section ranking) ---
 top_count=$(echo "$report" | jq '.topWaste | length')
 if (( top_count > 0 )); then
-  print_header "Top monthly waste (across all categories)"
+  table_section_header "Top monthly waste (across all categories)"
   rank=0
   echo "$report" | jq -r '.topWaste[] |
     [.type, .id, .name,

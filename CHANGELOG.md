@@ -8,9 +8,12 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - `lib/format.py` — Python equivalent of `lib/format.sh`. Standard-library only (no extra deps); preserves the same contract: caller-supplied stable column order, `None` renders as empty cells, lists flatten with `", "`, CSV uses RFC 4180 quoting, Markdown escapes `|` as `&#124;`.
+- `lib/table.sh` — shared ASCII table-rendering helpers. `table_col_width` (data-driven column width with min/optional-max clamp), `table_sep` (horizontal separator of N `─` characters), `sort_by_hints` (jq snippet emitter for the standard hint-flagged sort), and `table_section_header` (bold section label + matching underline, used by multi-section tools). Dependency-free beyond jq.
 
 ### Changed
 - `discover/lambda-eol-scanner.py` — now uses unified `--format {table|json|csv|md}` (with `--json` kept as a backward-compatible alias for `--format json`). Closes the multi-format migration umbrella so every shipped tool now shares the same output flag and a documented flat schema. Flat columns: `FunctionName,Runtime,Status,DeprecationDate,DaysUntilDeprecation,LastModified,PackageType,Architectures,Hint`.
+- `discover/ecs-overview.sh`, `discover/aurora-ha-audit.sh`, `discover/ecr-bloat-report.sh` — table rendering now uses `lib/table.sh` (`table_col_width`, `table_sep`, and `sort_by_hints` where applicable). Behavior is unchanged; the per-tool table block shrinks from ~5–8 lines to 2. The hint-flagged sort is implemented as a two-pass jq pipeline so the row-render jq body can stay single-quoted (no shell-escape clutter).
+- `discover/idle-resources.sh`, `audit/security-baseline.sh` — drop the locally-defined `print_header()` (identical between the two) in favor of `table_section_header` from `lib/table.sh`.
 
 ## [0.3.0] — 2026-06-05
 

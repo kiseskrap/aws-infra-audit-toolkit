@@ -21,6 +21,8 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/../lib/common.sh"
 # shellcheck source=../lib/format.sh
 source "${SCRIPT_DIR}/../lib/format.sh"
+# shellcheck source=../lib/table.sh
+source "${SCRIPT_DIR}/../lib/table.sh"
 
 usage() {
   cat <<EOF
@@ -137,9 +139,9 @@ fi
 # hint-flagged first (same as the table view) so spreadsheets and doc pastes
 # put anomalies at the top.
 build_flat_rows() {
-  echo "$clusters_enriched" | jq '
-    sort_by((.hints | length) * -1, .name)
-    | map({
+  echo "$clusters_enriched" \
+    | jq "$(sort_by_hints .name)" \
+    | jq 'map({
         ClusterName:   .name,
         Launch:        .launch,
         Services:      .svc,
@@ -147,8 +149,7 @@ build_flat_rows() {
         PendingTasks:  .pending,
         Ec2Instances:  (if .ec2 == 0 then "" else .ec2 end),
         Hints:         (.hints | join(", "))
-      })
-  '
+      })'
 }
 FLAT_COLS="ClusterName,Launch,Services,RunningTasks,PendingTasks,Ec2Instances,Hints"
 
@@ -162,12 +163,9 @@ if [[ "$OUTPUT" == md ]]; then
 fi
 
 # --- Pretty table ---
-# Determine cluster-name column width from data, with a sane min/max.
-name_width=$(echo "$clusters_enriched" | jq -r 'map(.name | length) | max // 30')
-(( name_width < 30 )) && name_width=30
-(( name_width > 60 )) && name_width=60
+name_width=$(table_col_width "$clusters_enriched" .name 30 60)
 sep_width=$(( name_width + 38 ))
-sep=$(printf '%.0s─' $(seq 1 $sep_width))
+sep=$(table_sep "$sep_width")
 
 printf '%sECS overview%s — account %s, region %s\n' "$C_BOLD" "$C_RESET" "$account" "$region"
 printf '%s\n' "$sep"
@@ -176,7 +174,8 @@ printf '%s\n' "$sep"
 
 # Sort: hint-flagged first (so anomalies are at the top), then by name.
 echo "$clusters_enriched" \
-  | jq -r 'sort_by((.hints | length) * -1, .name) | .[] |
+  | jq "$(sort_by_hints .name)" \
+  | jq -r '.[] |
       [
         .name,
         .launch,

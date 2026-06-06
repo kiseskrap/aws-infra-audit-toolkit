@@ -6,6 +6,8 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-06
+
 ### Added
 - `lib/format.py` — Python equivalent of `lib/format.sh`. Standard-library only (no extra deps); preserves the same contract: caller-supplied stable column order, `None` renders as empty cells, lists flatten with `", "`, CSV uses RFC 4180 quoting, Markdown escapes `|` as `&#124;`.
 - `lib/table.sh` — shared ASCII table-rendering helpers. `table_col_width` (data-driven column width with min/optional-max clamp), `table_sep` (horizontal separator of N `─` characters), `sort_by_hints` (jq snippet emitter for the standard hint-flagged sort), and `table_section_header` (bold section label + matching underline, used by multi-section tools). Dependency-free beyond jq.
@@ -55,7 +57,8 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `discover/ecs-overview.sh` — ECS cluster/service/task summary with anomaly hints; supports `--json` output and `AWS_PROFILE`/`AWS_REGION` env vars.
 - `lib/common.sh` — shared bash helpers (colors, error handling, dependency checks).
 
-[Unreleased]: https://github.com/kiseskrap/aws-infra-audit-toolkit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kiseskrap/aws-infra-audit-toolkit/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kiseskrap/aws-infra-audit-toolkit/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kiseskrap/aws-infra-audit-toolkit/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kiseskrap/aws-infra-audit-toolkit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kiseskrap/aws-infra-audit-toolkit/releases/tag/v0.1.0

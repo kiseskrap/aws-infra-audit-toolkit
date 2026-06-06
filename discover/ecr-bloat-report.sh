@@ -18,6 +18,8 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/../lib/common.sh"
 # shellcheck source=../lib/format.sh
 source "${SCRIPT_DIR}/../lib/format.sh"
+# shellcheck source=../lib/table.sh
+source "${SCRIPT_DIR}/../lib/table.sh"
 
 usage() {
   cat <<EOF
@@ -183,11 +185,9 @@ if [[ "$OUTPUT" == md ]]; then
 fi
 
 # --- Pretty table ---
-name_width=$(echo "$enriched" | jq -r 'map(.name | length) | max // 30')
-(( name_width < 30 )) && name_width=30
-(( name_width > 60 )) && name_width=60
+name_width=$(table_col_width "$enriched" .name 30 60)
 sep_width=$(( name_width + 42 ))
-sep=$(printf '%.0s─' $(seq 1 $sep_width))
+sep=$(table_sep "$sep_width")
 
 printf '%sECR bloat report%s — account %s, region %s\n' "$C_BOLD" "$C_RESET" "$account" "$region"
 printf '%s\n' "$sep"

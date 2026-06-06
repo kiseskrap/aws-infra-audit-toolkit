@@ -18,6 +18,8 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/../lib/common.sh"
 # shellcheck source=../lib/format.sh
 source "${SCRIPT_DIR}/../lib/format.sh"
+# shellcheck source=../lib/table.sh
+source "${SCRIPT_DIR}/../lib/table.sh"
 
 usage() {
   cat <<EOF
@@ -138,9 +140,9 @@ fi
 # CSV / Markdown: hint-flagged first (same as table) so HA gaps are at the
 # top of a spreadsheet open or doc paste.
 build_flat_rows() {
-  echo "$enriched" | jq '
-    sort_by((.hints | length) * -1, .id)
-    | map({
+  echo "$enriched" \
+    | jq "$(sort_by_hints .id)" \
+    | jq 'map({
         Identifier: .id,
         Type:       .type,
         Engine:     .engine,
@@ -149,8 +151,7 @@ build_flat_rows() {
         Members:    .memberCount,
         Azs:        .azs,
         Hints:      (.hints | join(", "))
-      })
-  '
+      })'
 }
 FLAT_COLS="Identifier,Type,Engine,Version,Class,Members,Azs,Hints"
 
@@ -164,15 +165,10 @@ if [[ "$OUTPUT" == md ]]; then
 fi
 
 # --- Pretty table ---
-id_width=$(echo "$enriched" | jq -r 'map(.id | length) | max // 20')
-(( id_width < 20 )) && id_width=20
-(( id_width > 50 )) && id_width=50
-
-class_width=$(echo "$enriched" | jq -r 'map(.class | length) | max // 12')
-(( class_width < 12 )) && class_width=12
-
+id_width=$(table_col_width "$enriched" .id 20 50)
+class_width=$(table_col_width "$enriched" .class 12)
 sep_width=$(( id_width + class_width + 50 ))
-sep=$(printf '%.0s─' $(seq 1 $sep_width))
+sep=$(table_sep "$sep_width")
 
 printf '%sRDS/Aurora HA audit%s — account %s, region %s\n' "$C_BOLD" "$C_RESET" "$account" "$region"
 printf '%s\n' "$sep"
@@ -182,7 +178,8 @@ printf '%s\n' "$sep"
 
 # Sort: hint-flagged first, then by id.
 echo "$enriched" \
-  | jq -r 'sort_by((.hints | length) * -1, .id) | .[] |
+  | jq "$(sort_by_hints .id)" \
+  | jq -r '.[] |
       [
         .id,
         .type,

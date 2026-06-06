@@ -18,6 +18,8 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/../lib/common.sh"
 # shellcheck source=../lib/format.sh
 source "${SCRIPT_DIR}/../lib/format.sh"
+# shellcheck source=../lib/table.sh
+source "${SCRIPT_DIR}/../lib/table.sh"
 
 usage() {
   cat <<EOF
@@ -342,10 +344,6 @@ fi
 # -----------------------------------------------------------------------------
 # Table renderer
 # -----------------------------------------------------------------------------
-print_header() {
-  printf '\n%s%s%s\n' "$C_BOLD" "$1" "$C_RESET"
-  printf '%s\n' "$(printf '%.0s─' $(seq 1 ${#1}))"
-}
 
 print_check_status() {
   local label=$1 check_json=$2 status
@@ -364,7 +362,7 @@ printf '%sSecurity baseline%s — account %s, region %s\n' \
 
 # --- SGs ---
 section=$(echo "$report" | jq '.checks.permissiveSecurityGroups')
-print_header "Security groups with 0.0.0.0/0 inbound (non-80/443)"
+table_section_header "Security groups with 0.0.0.0/0 inbound (non-80/443)"
 if print_check_status "permissiveSecurityGroups" "$section"; then
   count=$(echo "$section" | jq '.items | length')
   if (( count == 0 )); then
@@ -391,7 +389,7 @@ fi
 
 # --- S3 ---
 section=$(echo "$report" | jq '.checks.publicS3Buckets')
-print_header "S3 buckets effectively public"
+table_section_header "S3 buckets effectively public"
 if print_check_status "publicS3Buckets" "$section"; then
   count=$(echo "$section" | jq '.items | length')
   if (( count == 0 )); then
@@ -407,7 +405,7 @@ fi
 
 # --- IAM keys ---
 section=$(echo "$report" | jq '.checks.staleIamKeys')
-print_header "IAM access keys older than $STALE_DAYS days"
+table_section_header "IAM access keys older than $STALE_DAYS days"
 if print_check_status "staleIamKeys" "$section"; then
   count=$(echo "$section" | jq '.items | length')
   if (( count == 0 )); then

@@ -5,11 +5,15 @@ Lists Lambda functions in the current account/region and flags runtimes that
 are already deprecated or within the warning window.
 
 Usage:
-  ./discover/lambda-eol-scanner.py [--json] [--help]
+  ./discover/lambda-eol-scanner.py [--format {table|json|csv|md}] [--help]
 
 Environment:
   AWS_PROFILE, AWS_REGION/AWS_DEFAULT_REGION  standard AWS SDK variables
   NO_COLOR=1                                  disable colored output
+
+CSV / Markdown schema (one row per function):
+  FunctionName,Runtime,Status,DeprecationDate,DaysUntilDeprecation,
+  LastModified,PackageType,Architectures,Hint
 """
 
 from __future__ import annotations
@@ -19,7 +23,15 @@ import json
 import os
 import sys
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any
+
+# Allow `from lib.format import ...` when invoked as `./discover/lambda-eol-scanner.py`.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from lib.format import format_csv, format_md  # noqa: E402
 
 try:
     import boto3
@@ -90,16 +102,65 @@ class Colors:
         self.red = "\033[31m" if enabled else ""
 
 
+FLAT_COLUMNS = (
+    "FunctionName",
+    "Runtime",
+    "Status",
+    "DeprecationDate",
+    "DaysUntilDeprecation",
+    "LastModified",
+    "PackageType",
+    "Architectures",
+    "Hint",
+)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Flag Lambda functions on EOL or near-EOL runtimes."
     )
     parser.add_argument(
+        "--format",
+        choices=["table", "json", "csv", "md"],
+        default="table",
+        help="output format (default: table)",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
-        help="emit machine-readable JSON instead of a table",
+        help="alias for --format json (kept for backward compat)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.json:
+        args.format = "json"
+    return args
+
+
+def flat_rows(functions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project the function records onto the stable CSV/MD column schema."""
+    ordered = sorted(
+        functions,
+        key=lambda fn: (
+            {"eol": 0, "warn": 1, "unknown": 2, "ok": 3}.get(fn["status"], 4),
+            fn["functionName"],
+        ),
+    )
+    return [
+        {
+            "FunctionName": fn["functionName"],
+            "Runtime": fn["runtime"] or "",
+            "Status": fn["status"],
+            "DeprecationDate": fn["deprecationDate"] or "",
+            "DaysUntilDeprecation": fn["daysUntilDeprecation"]
+            if fn["daysUntilDeprecation"] is not None
+            else "",
+            "LastModified": fn["lastModified"],
+            "PackageType": fn["packageType"],
+            "Architectures": fn["architectures"],
+            "Hint": fn["hint"],
+        }
+        for fn in ordered
+    ]
 
 
 def die(message: str) -> None:
@@ -284,7 +345,7 @@ def main() -> None:
     except (BotoCoreError, ClientError) as exc:
         die(str(exc))
 
-    if args.json:
+    if args.format == "json":
         print(
             json.dumps(
                 {
@@ -301,6 +362,14 @@ def main() -> None:
                 sort_keys=True,
             )
         )
+        return
+
+    if args.format == "csv":
+        print(format_csv(flat_rows(functions), FLAT_COLUMNS))
+        return
+
+    if args.format == "md":
+        print(format_md(flat_rows(functions), FLAT_COLUMNS))
         return
 
     print_table(functions, account_id, region, colors)

@@ -6,6 +6,12 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `lib/format.py` — Python equivalent of `lib/format.sh`. Standard-library only (no extra deps); preserves the same contract: caller-supplied stable column order, `None` renders as empty cells, lists flatten with `", "`, CSV uses RFC 4180 quoting, Markdown escapes `|` as `&#124;`.
+
+### Changed
+- `discover/lambda-eol-scanner.py` — now uses unified `--format {table|json|csv|md}` (with `--json` kept as a backward-compatible alias for `--format json`). Closes the multi-format migration umbrella so every shipped tool now shares the same output flag and a documented flat schema. Flat columns: `FunctionName,Runtime,Status,DeprecationDate,DaysUntilDeprecation,LastModified,PackageType,Architectures,Hint`.
+
 ## [0.3.0] — 2026-06-05
 
 ### Added

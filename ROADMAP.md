@@ -19,9 +19,10 @@ Tools that move from "what exists" to "is it healthy?"
 - [x] `audit/security-baseline.sh` — Permissive security groups (0.0.0.0/0 inbound on non-80/443), public S3 buckets, IAM users with access keys older than 180 days.
 - [ ] `audit/cross-env-leak-check.sh` — Detects when staging and production share the same Redis, S3 bucket, or OpenSearch domain (a real failure mode I've seen).
 
-## v0.4 — project hygiene
+## v0.4 — cost insight + maintainer foundations
 
-Things a maintainer would expect.
+Cost-aware audit tooling plus the maintainer-experience scaffolding that
+makes the project feel like a real OSS project to drop into.
 
 - [x] `audit/cost-rough-estimate.py` — list-price estimate from inventory × AWS Pricing API (EC2, RDS, EBS, ELB, EIP). Runs without billing IAM as a complement to `cost-hotspots.py`.
 - [ ] `CONTRIBUTING.md`
@@ -41,7 +42,6 @@ Things a maintainer would expect.
 
 - [ ] `audit/ecs-task-rightsizing.py` — Compares task definition CPU/memory vs actual CloudWatch utilization, suggests downsizing.
 - [ ] `audit/rds-rightsizing.py` — Same idea for RDS instance classes.
-- [ ] Markdown report mode (`--format md`) for pasting into team docs.
 
 ## v1.0 — release
 

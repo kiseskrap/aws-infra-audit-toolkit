@@ -89,6 +89,11 @@ AWS_PROFILE=staging AWS_REGION=us-east-1 ./discover/ecs-overview.sh
 # counts (ECS, RDS, Lambda, EC2 + EBS/EIP/LB, ECR). Requires
 # ce:GetCostAndUsage in the billing-enabled account.
 ./audit/cost-hotspots.py
+
+# List-price estimate from inventory × AWS Pricing API rates.
+# Runs without billing IAM — useful when ce:GetCostAndUsage is not
+# available (sub-accounts, locked-down environments).
+./audit/cost-rough-estimate.py
 ```
 
 ## Example output
@@ -122,6 +127,7 @@ Hints:
 | `discover/ecr-bloat-report.sh` | shipped | Ranks ECR repos by image count and flags those with no lifecycle policy |
 | `discover/idle-resources.sh` | shipped | Stopped EC2 (with age + still-billable EBS), empty ECS clusters, ALBs with no targets, unattached EBS, unused EIPs. Each item carries a rough monthly cost; `--with-cleanup-commands` prints commented remediation commands |
 | `audit/cost-hotspots.py` | shipped | Ranks AWS services by 30-day Cost Explorer spend joined with per-service topology counts (ECS, RDS, Lambda, EC2, EBS/EIP/LB, ECR). Surfaces high cost-per-resource and services billed without locally-counted resources |
+| `audit/cost-rough-estimate.py` | shipped | List-price estimate from AWS Pricing API × inventory (EC2, RDS, EBS, ELB, EIP). Runs with only standard read-only IAM — no billing access required. Useful as an upper bound and as a comparison point against the actual bill from `cost-hotspots` |
 | `audit/security-baseline.sh` | shipped | Permissive SGs (severity-classified), effectively-public S3 buckets, IAM users with access keys older than 180 days. Each check isolated |
 
 See [ROADMAP.md](./ROADMAP.md) for the full sequence.

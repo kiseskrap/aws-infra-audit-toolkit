@@ -23,8 +23,9 @@ Tools that move from "what exists" to "is it healthy?"
 
 Things a maintainer would expect.
 
+- [x] `audit/cost-rough-estimate.py` — list-price estimate from inventory × AWS Pricing API (EC2, RDS, EBS, ELB, EIP). Runs without billing IAM as a complement to `cost-hotspots.py`.
 - [ ] `CONTRIBUTING.md`
-- [ ] `.github/workflows/lint.yml` — shellcheck + ruff on every PR
+- [x] `.github/workflows/lint.yml` — shellcheck + ruff on every PR
 - [ ] `.github/ISSUE_TEMPLATE/` — feature_request.md and bug_report.md
 - [ ] `tests/` — bats-core tests for shell scripts, pytest for Python
 - [ ] Pre-commit hooks (`.pre-commit-config.yaml`)

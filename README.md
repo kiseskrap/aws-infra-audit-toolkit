@@ -162,6 +162,15 @@ Triage order: start with **untagged-heavy** rows at the top of the table — the
 └── docs/       longer-form explanations and runbooks
 ```
 
+## Related projects
+
+This toolkit is the operations corner of a three-repo DevOps set. The other two cover deploy automation and platform documentation:
+
+- **[gitlab-ci-deploy-patterns](https://github.com/kiseskrap/gitlab-ci-deploy-patterns)** — reusable GitLab CI templates for the same AWS environments this toolkit audits. Branch / tag → env routing, ECS deploys (force for dev/stage, CodeDeploy blue/green for prod with an in-flight check), S3 + CloudFront for static frontends with versioned per-env folders so rollbacks are an S3 copy, not a rebuild.
+- **[infra-docs-template](https://github.com/kiseskrap/infra-docs-template)** — opinionated seven-section documentation framework for multi-domain AWS platforms (overview / service architecture / ECS / queue-event / deployment / cost / failure-points / runbook). Worked example uses a fictional *AcmeShop platform* across orders, payments, catalog, and shipping domains.
+
+Together: this toolkit tells you *what's in the account*, the patterns repo tells you *how things get deployed*, and the docs template tells you *how to write the platform down*.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).

@@ -1,0 +1,25 @@
+{
+  "poll_interval_seconds": 30,
+  "lookback_seconds": 300,
+  "patterns": [
+    {
+      "name": "error",
+      "log_group": "/aws/ecs/example-api",
+      "filter_pattern": "ERROR",
+      "labels": {
+        "env": "prod",
+        "service": "example-api"
+      }
+    },
+    {
+      "name": "timeout",
+      "log_group": "/aws/lambda/example-worker",
+      "filter_pattern": "\"Task timed out\"",
+      "labels": {
+        "env": "prod",
+        "service": "example-worker"
+      }
+    }
+  ]
+}
+

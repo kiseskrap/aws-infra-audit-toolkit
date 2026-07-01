@@ -15,6 +15,7 @@ out/
 tmp/
 *.report.txt
 *.report.json
+observability-lab/exporters/config.local.json
 
 # editor
 .idea/

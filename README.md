@@ -24,6 +24,11 @@ The AWS console is fine for any single question but terrible for getting a portf
 
 Everything is **read-only**. No mutations.
 
+The toolkit also includes an optional [AWS Observability Lab](./observability-lab/README.md)
+for evaluating how CloudWatch Logs and metrics can be surfaced through local
+Prometheus / Grafana / OpenMetrics workflows. The lab is a proof of concept,
+not a hosted monitoring replacement.
+
 ## Who this is for
 
 In many environments, an AI agent with AWS access can generate a similar audit on demand — often faster.
@@ -94,6 +99,11 @@ AWS_PROFILE=staging AWS_REGION=us-east-1 ./discover/ecs-overview.sh
 # Runs without billing IAM — useful when ce:GetCostAndUsage is not
 # available (sub-accounts, locked-down environments).
 ./audit/cost-rough-estimate.py
+
+# Local observability lab: CloudWatch Logs -> OpenMetrics -> Prometheus -> Grafana
+cd observability-lab
+cp exporters/config.example.json exporters/config.local.json
+AWS_PROFILE=staging AWS_REGION=ap-northeast-2 docker compose up --build
 ```
 
 ## Example output
@@ -129,6 +139,7 @@ Hints:
 | `audit/cost-hotspots.py` | shipped | Ranks AWS services by 30-day Cost Explorer spend joined with per-service topology counts (ECS, RDS, Lambda, EC2, EBS/EIP/LB, ECR). Surfaces high cost-per-resource and services billed without locally-counted resources |
 | `audit/cost-rough-estimate.py` | shipped | List-price estimate from AWS Pricing API × inventory (EC2, RDS, EBS, ELB, EIP). Runs with only standard read-only IAM — no billing access required. Useful as an upper bound and as a comparison point against the actual bill from `cost-hotspots` |
 | `audit/security-baseline.sh` | shipped | Permissive SGs (severity-classified), effectively-public S3 buckets, IAM users with access keys older than 180 days. Each check isolated |
+| `observability-lab/` | experimental | Local Prometheus, Grafana, Loki, and a CloudWatch Logs OpenMetrics exporter for evaluating Datadog-adjacent observability workflows |
 
 See [ROADMAP.md](./ROADMAP.md) for the full sequence.
 
@@ -158,6 +169,8 @@ Triage order: start with **untagged-heavy** rows at the top of the table — the
 .
 ├── discover/   read-only inventory tools — what exists?
 ├── audit/      opinionated checks — is it healthy?  cost-wise?  secure?
+├── observability-lab/
+│               local OSS observability proof of concept
 ├── lib/        shared bash helpers
 └── docs/       longer-form explanations and runbooks
 ```

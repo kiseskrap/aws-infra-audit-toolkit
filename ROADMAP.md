@@ -43,6 +43,13 @@ makes the project feel like a real OSS project to drop into.
 - [ ] `audit/ecs-task-rightsizing.py` — Compares task definition CPU/memory vs actual CloudWatch utilization, suggests downsizing.
 - [ ] `audit/rds-rightsizing.py` — Same idea for RDS instance classes.
 
+## v0.7 — observability lab
+
+- [x] `observability-lab/` — Local Prometheus, Grafana, Loki, and CloudWatch Logs OpenMetrics exporter proof of concept.
+- [ ] Add an optional CloudWatch service metrics exporter profile for ECS, RDS, Lambda, ALB, and SQS metrics.
+- [ ] Add alerting examples for log-derived error rates and exporter polling lag.
+- [ ] Add a Datadog-to-OSS dashboard comparison note.
+
 ## v1.0 — release
 
 - [ ] Polish, full test coverage, tag `v1.0.0`.
@@ -52,4 +59,5 @@ makes the project feel like a real OSS project to drop into.
 
 - Anything that mutates resources. Use Terraform or AWS Config for remediation.
 - Multi-account organization sweeps. Run the toolkit per account with the right profile instead.
-- Real-time monitoring. CloudWatch, Datadog, etc. already do this.
+- Hosted real-time monitoring replacement. CloudWatch, Datadog, etc. already
+  do this; the observability lab is for local evaluation and portability work.

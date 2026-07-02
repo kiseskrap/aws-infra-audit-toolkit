@@ -57,6 +57,9 @@ Default local credentials:
 
 Prometheus is available at <http://localhost:9090>.
 
+> First time here? See **[docs/onboarding.md](./docs/onboarding.md)** — a
+> hands-on 30-minute tutorial from first run to first alert.
+
 ## AWS Permissions
 
 The exporter is read-only. The minimum useful permissions are:

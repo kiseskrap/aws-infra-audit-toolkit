@@ -59,6 +59,10 @@ Prometheus is available at <http://localhost:9090>.
 
 > First time here? See **[docs/onboarding.md](./docs/onboarding.md)** — a
 > hands-on 30-minute tutorial from first run to first alert.
+>
+> On-prem clinical scenario? See **[hospital-remote/](./hospital-remote/)** — a
+> sub-lab that simulates a hospital service forwarding PHI-free operational
+> metrics to a remote cloud backend over a single outbound endpoint.
 
 ## AWS Permissions
 

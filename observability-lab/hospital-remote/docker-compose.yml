@@ -1,0 +1,77 @@
+# hospital-remote — end-to-end simulation of an on-prem hospital service
+# forwarding aggregated, PHI-free metrics to a remote cloud backend.
+#
+# Two logical zones, one docker network:
+#   - on-prem:  vitalcare-mock + otel-collector
+#   - cloud:    prometheus (remote-write receiver) + grafana
+#
+# In production these two zones are separated by a hospital firewall
+# with a single outbound HTTPS endpoint (see docs/network-boundary.md).
+
+services:
+
+  # ---------- Hospital on-prem ----------
+
+  vitalcare-mock:
+    build:
+      context: ./on-prem/vitalcare-mock
+    container_name: hospital-vitalcare-mock
+    environment:
+      HOSPITAL_ID: hospital-demo
+      WARD_ID: icu-a
+      SERVICE_VERSION: 1.0.0
+    ports:
+      # Exposed only for local exploration. In a hospital, this would
+      # be reachable only from the on-prem management network.
+      - "8081:8080"
+    networks:
+      - lab
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.104.0
+    container_name: hospital-otel-collector
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./on-prem/otel-collector/config.yaml:/etc/otel/config.yaml:ro
+    depends_on:
+      - vitalcare-mock
+      - cloud-prometheus
+    networks:
+      - lab
+
+  # ---------- Cloud backend ----------
+
+  cloud-prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: cloud-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=6h"
+      - "--web.enable-remote-write-receiver"
+    volumes:
+      - ./cloud/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9091:9090"
+    networks:
+      - lab
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: cloud-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./cloud/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./cloud/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - cloud-prometheus
+    networks:
+      - lab
+
+networks:
+  lab:
+    driver: bridge

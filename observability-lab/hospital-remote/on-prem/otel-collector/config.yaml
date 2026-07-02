@@ -1,0 +1,104 @@
+# OpenTelemetry Collector — hospital-side pipeline
+#
+# Responsibility:
+#   1. Scrape /metrics from local clinical services (VitalCare).
+#   2. Apply a PHI protection pipeline BEFORE anything leaves the hospital
+#      network. Drop or redact any suspicious label.
+#   3. Forward only aggregated, sanitized metrics to the cloud backend via
+#      a single outbound HTTPS endpoint.
+#
+# The processors are the enforcement point. If a label is not on the
+# allow-list, it is dropped. Fail closed.
+
+receivers:
+  # Scrape the local Prometheus endpoint of the clinical service.
+  # In a real deployment, you would scrape multiple services this way.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: vitalcare-mock
+          scrape_interval: 10s
+          static_configs:
+            - targets:
+                - vitalcare-mock:8080
+              labels:
+                origin: hospital-on-prem
+
+processors:
+  # Batch to reduce outbound requests.
+  batch:
+    send_batch_size: 500
+    timeout: 5s
+
+  # PHI PROTECTION — 1: keep only the allow-listed attribute keys on both
+  # RESOURCE attributes (added by the Prometheus receiver, e.g. server_address,
+  # http_scheme, service_name) and DATAPOINT attributes (per-sample labels).
+  # transform processor's keep_keys is a true allow-list — deny by default.
+  # This step MUST run AFTER resource/tag so collector.id survives.
+  transform/allowlist:
+    metric_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["hospital_id", "ward_id", "service_version", "origin", "collector.id"])
+      - context: datapoint
+        statements:
+          - keep_keys(attributes, ["hospital_id", "ward_id", "service_version", "origin", "error_class"])
+
+  # PHI PROTECTION — 2: hard-drop any metric whose name suggests it
+  # carries patient-identifying content. Belt-and-braces defense.
+  # OTTL syntax reference: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/pkg/ottl
+  filter/drop_phi_metrics:
+    metrics:
+      metric:
+        # Reject metrics that were accidentally named with PHI cues.
+        - 'IsMatch(name, ".*_patient_id_.*")'
+        - 'IsMatch(name, ".*_mrn_.*")'
+        - 'IsMatch(name, ".*_name.*")'
+        - 'IsMatch(name, ".*_ssn.*")'
+
+  # Add a metadata attribute so the cloud side can distinguish which
+  # collector sent a sample (for audit + tenant isolation).
+  resource/tag:
+    attributes:
+      - key: collector.id
+        value: hospital-otel-collector
+        action: insert
+
+exporters:
+  # Forward to the cloud Prometheus via remote-write.
+  # In production, this endpoint is Grafana Cloud, AWS Managed Prometheus,
+  # or your own Mimir/Cortex deployment. HTTPS + bearer/mTLS auth.
+  prometheusremotewrite:
+    endpoint: http://cloud-prometheus:9090/api/v1/write
+    # In a real deployment:
+    #   headers:
+    #     Authorization: "Bearer ${env:CLOUD_INGEST_TOKEN}"
+    #   tls:
+    #     ca_file: /etc/otel/ca.pem
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Debug: log a summary of what the pipeline is emitting.
+  # Useful during onboarding, remove in production.
+  debug:
+    verbosity: basic
+    sampling_initial: 2
+    sampling_thereafter: 200
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors:
+        # 1. Tag with collector identity FIRST so the allow-list keeps it.
+        - resource/tag
+        # 2. Allow-list every attribute on resource + datapoint.
+        - transform/allowlist
+        # 3. Belt-and-braces: drop metric names that scream PHI.
+        - filter/drop_phi_metrics
+        # 4. Batch and export.
+        - batch
+      exporters: [prometheusremotewrite, debug]

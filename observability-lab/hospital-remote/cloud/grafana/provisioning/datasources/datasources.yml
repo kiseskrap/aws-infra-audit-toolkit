@@ -1,0 +1,10 @@
+apiVersion: 1
+
+datasources:
+  - name: Cloud Prometheus
+    uid: hospital-cloud-prom
+    type: prometheus
+    access: proxy
+    url: http://cloud-prometheus:9090
+    isDefault: true
+    editable: false

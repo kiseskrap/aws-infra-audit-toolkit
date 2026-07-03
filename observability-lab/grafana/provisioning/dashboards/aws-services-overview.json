@@ -206,13 +206,119 @@
       "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}}
     },
 
-    {"id": 300, "type": "row", "title": "ApplicationELB", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 26}, "collapsed": false},
+    {"id": 250, "type": "row", "title": "Lambda — Triage (when the stat panel above is not zero)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 26}, "collapsed": false},
+
+    {
+      "id": 251,
+      "type": "timeseries",
+      "title": "Lambda — Error rate % (top 15)",
+      "description": "errors / invocations over the last 15 minutes. 0.1% is noise, 1% is worth investigating, 5%+ is an incident.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 27},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "topk(15, 100 * sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m])) / clamp_min(sum by (dimension_FunctionName) (increase(aws_lambda_invocations_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m])), 1))",
+          "legendFormat": "{{dimension_FunctionName}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "yellow", "value": 1},
+            {"color": "red", "value": 5}
+          ]},
+          "custom": {"lineWidth": 2, "gradientMode": "opacity", "thresholdsStyle": {"mode": "line+area"}}
+        }
+      }
+    },
+    {
+      "id": 252,
+      "type": "table",
+      "title": "Lambda — Top functions by errors (last 15m) — click function name",
+      "description": "One row per function with any errors in the last 15 minutes, ranked by absolute error count. The 'CloudWatch' link opens Logs Insights filtered to that function's ERROR events.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 27},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "topk(10, sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m])) > 0)",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (dimension_FunctionName) (increase(aws_lambda_invocations_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m]))",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {"byField": "dimension_FunctionName", "mode": "outer"}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time 1": true, "Time 2": true, "__name__ 1": true, "__name__ 2": true, "instance": true, "job": true},
+            "renameByName": {
+              "dimension_FunctionName": "function",
+              "Value #A": "errors (15m)",
+              "Value #B": "invocations (15m)"
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "error rate",
+            "mode": "binary",
+            "binary": {"left": "errors (15m)", "operator": "/", "right": "invocations (15m)"}
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "error rate"},
+            "properties": [
+              {"id": "unit", "value": "percentunit"},
+              {"id": "custom.cellOptions", "value": {"type": "color-background", "mode": "gradient"}},
+              {"id": "thresholds", "value": {"mode": "absolute", "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 0.01},
+                {"color": "red", "value": 0.05}
+              ]}}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "function"},
+            "properties": [
+              {"id": "links", "value": [
+                {
+                  "title": "Open CloudWatch Logs Insights for this function",
+                  "url": "https://ap-northeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-northeast-2#logsV2:logs-insights$3FqueryDetail$3D~(end~0~start~-900~timeType~'RELATIVE~unit~'seconds~editorString~'fields*20*40timestamp*2c*20*40message*0a*7c*20filter*20*40message*20like*20*2fERROR*2f*0a*7c*20sort*20*40timestamp*20desc*0a*7c*20limit*20100~source~(~'*2faws*2flambda*2f${__data.fields.function}))",
+                  "targetBlank": true
+                }
+              ]}
+            ]
+          }
+        ]
+      },
+      "options": {"showHeader": true, "cellHeight": "sm"}
+    },
+
+    {"id": 300, "type": "row", "title": "ApplicationELB", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 35}, "collapsed": false},
 
     {
       "id": 301,
       "type": "timeseries",
       "title": "ALB — 5xx rate by LB (per 5m)",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 27},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
       "datasource": {"type": "prometheus", "uid": "Prometheus"},
       "targets": [
         {
@@ -227,7 +333,7 @@
       "id": 302,
       "type": "timeseries",
       "title": "ALB — Target response time (avg)",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 27},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
       "datasource": {"type": "prometheus", "uid": "Prometheus"},
       "targets": [
         {
@@ -242,7 +348,7 @@
       "id": 303,
       "type": "table",
       "title": "ALB — inventory",
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 35},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 44},
       "description": "One row per ALB discovered by YACE. Sanity-check that the expected load balancers are all listed here.",
       "datasource": {"type": "prometheus", "uid": "Prometheus"},
       "targets": [

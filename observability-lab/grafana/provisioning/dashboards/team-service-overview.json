@@ -1,0 +1,193 @@
+{
+  "uid": "team-service-overview",
+  "title": "Team & Service — CloudWatch Log Signals",
+  "description": "Team- and service-level rollup of log-derived signals emitted by cloudwatch-log-metrics. Works for any real deployment: only labels differ.",
+  "tags": ["cloudwatch-log-metrics", "team-overview"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {"from": "now-1h", "to": "now"},
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "env",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "query": "label_values(aws_log_poll_lag_seconds, env)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "team",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "query": "label_values(aws_log_poll_lag_seconds{env=~\"$env\"}, team)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "query": "label_values(aws_log_poll_lag_seconds{env=~\"$env\",team=~\"$team\"}, service)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Services observed",
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "count(count by (service) (aws_log_poll_lag_seconds{env=~\"$env\",team=~\"$team\",service=~\"$service\"}))",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "none", "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "short"}}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Match events (5m)",
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(aws_log_events_matched_total{env=~\"$env\",team=~\"$team\",service=~\"$service\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 20}]}}}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Poll errors (1h)",
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+      "description": "Non-zero means the exporter itself is failing to reach CloudWatch — check IAM, network, or Log Group name.",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(aws_log_poll_errors_total{env=~\"$env\",team=~\"$team\",service=~\"$service\"}[1h]))",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area", "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Max poll lag",
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+      "description": "How stale the exporter's view is. Small (<30s) is normal; large means CloudWatch API is slow or the exporter can't keep up.",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "max(aws_log_poll_lag_seconds{env=~\"$env\",team=~\"$team\",service=~\"$service\"})",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
+      "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 120}]}}}
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Matched events per second — by team",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (team) (rate(aws_log_events_matched_total{env=~\"$env\",team=~\"$team\",service=~\"$service\"}[5m]))",
+          "legendFormat": "{{team}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "eps"}}
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Matched events per second — by service (top 10)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "topk(10, sum by (service) (rate(aws_log_events_matched_total{env=~\"$env\",team=~\"$team\",service=~\"$service\"}[5m])))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "eps"}}
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Matched events per second — by pattern (error / timeout / …)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (pattern) (rate(aws_log_events_matched_total{env=~\"$env\",team=~\"$team\",service=~\"$service\"}[5m]))",
+          "legendFormat": "{{pattern}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "eps"}}
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Poll lag by service (should stay small)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "aws_log_poll_lag_seconds{env=~\"$env\",team=~\"$team\",service=~\"$service\"}",
+          "legendFormat": "{{service}} / {{pattern}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "id": 30,
+      "type": "table",
+      "title": "Service inventory — what we're watching right now",
+      "description": "One row per (team, service, pattern) currently being polled. If a service you expected is missing, it is not in config.local.json.",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "targets": [
+        {
+          "expr": "aws_log_poll_lag_seconds{env=~\"$env\",team=~\"$team\",service=~\"$service\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true},
+            "indexByName": {"team": 0, "service": 1, "log_group": 2, "pattern": 3, "env": 4, "Value": 5}
+          }
+        }
+      ],
+      "options": {"showHeader": true}
+    }
+  ]
+}

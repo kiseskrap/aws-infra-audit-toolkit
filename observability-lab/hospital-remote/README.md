@@ -85,6 +85,23 @@ Expected within 1–2 minutes:
 - `Errors by class` shows occasional `ProcessingError` (1 % synthetic error rate)
 - `PHI protection audit` table lists only the allow-listed label set
 
+## Verify PHI defenses (automated)
+
+The core claim of this lab — that PHI cannot cross the network boundary —
+is verified by a red-team script:
+
+```bash
+./scripts/red-team-phi.sh
+```
+
+The script temporarily enables `RED_TEAM_MODE` on the VitalCare mock,
+which makes it emit three deliberately non-compliant metrics, then
+queries the cloud Prometheus to confirm none of them arrived. Exit code
+0 = PASS, 1 = FAIL (compliance incident), 2 = infra error.
+
+See [docs/red-team.md](./docs/red-team.md) for how this is designed,
+what each attack vector tests, and how to wire it into CI.
+
 ## Files
 
 ```text
@@ -92,7 +109,7 @@ hospital-remote/
 ├── README.md                                ← this file
 ├── docker-compose.yml
 ├── on-prem/
-│   ├── vitalcare-mock/                      ← Flask + prometheus_client, no PHI
+│   ├── vitalcare-mock/                      ← Flask + prometheus_client, no PHI (unless RED_TEAM_MODE)
 │   │   ├── vitalcare_mock.py
 │   │   ├── requirements.txt
 │   │   └── Dockerfile
@@ -105,10 +122,13 @@ hospital-remote/
 │       ├── provisioning/                    ← datasource + dashboard provider
 │       └── dashboards/
 │           └── vitalcare-service-health.json
+├── scripts/
+│   └── red-team-phi.sh                      ← automated PHI defense verification
 └── docs/
     ├── phi-protection.md                    ← how PHI is prevented from leaving
     ├── network-boundary.md                  ← single-endpoint outbound design
-    └── offline-behavior.md                  ← what happens when the WAN is down
+    ├── offline-behavior.md                  ← what happens when the WAN is down
+    └── red-team.md                          ← how the verification works + CI usage
 ```
 
 ## Design principles (read before extending)

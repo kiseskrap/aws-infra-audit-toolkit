@@ -36,6 +36,11 @@ HOSPITAL_ID = os.getenv("HOSPITAL_ID", "hospital-demo")
 WARD_ID = os.getenv("WARD_ID", "icu-a")
 SERVICE_VERSION = os.getenv("SERVICE_VERSION", "1.0.0")
 
+# Red-team mode intentionally exposes PHI-shaped metrics to verify that
+# the OTel Collector's PHI defenses actually drop them. Never enable in
+# any real deployment. Default OFF. Toggled by env only.
+RED_TEAM_MODE = os.getenv("RED_TEAM_MODE", "false").lower() in ("1", "true", "yes")
+
 # Allowed label set. Any new label must be added here consciously.
 COMMON_LABELS = ["hospital_id", "ward_id", "service_version"]
 
@@ -90,6 +95,65 @@ service_up.labels(**_labels()).set(1)
 active_patient_count.labels(**_labels()).set(0)
 
 
+# ---------------------------------------------------------------------------
+# RED-TEAM MODE — intentional PHI leakage, disabled by default
+# ---------------------------------------------------------------------------
+#
+# When RED_TEAM_MODE is enabled, the service emits three deliberately
+# non-compliant metrics. The whole point is to confirm the OTel Collector's
+# defense layers 1 and 2 (transform allow-list + filter drop-by-name) drop
+# these before they can reach the cloud backend.
+#
+#   Attack 1 — metric NAME contains "patient_id"
+#              Should be dropped by filter/drop_phi_metrics.
+#   Attack 2 — metric NAME contains "mrn"
+#              Should be dropped by filter/drop_phi_metrics.
+#   Attack 3 — metric name is INNOCENT but label contains patient_id
+#              Should be scrubbed by transform/allowlist
+#              (patient_id is not in the keep_keys list).
+#
+# In production this endpoint and these metrics would not exist at all.
+# They exist here so that a compliance auditor can watch them get blocked.
+
+red_team_patient_id_leaked: Counter | None = None
+red_team_mrn_lookups: Counter | None = None
+red_team_vitals_by_patient: Counter | None = None
+
+if RED_TEAM_MODE:
+    red_team_patient_id_leaked = Counter(
+        "vitalcare_patient_id_leaked_total",
+        "RED-TEAM: metric NAME contains patient_id. Must be dropped by filter.",
+        COMMON_LABELS,
+    )
+    red_team_mrn_lookups = Counter(
+        "vitalcare_mrn_lookups_total",
+        "RED-TEAM: metric NAME contains mrn. Must be dropped by filter.",
+        COMMON_LABELS,
+    )
+    red_team_vitals_by_patient = Counter(
+        "vitalcare_vitals_by_patient_total",
+        "RED-TEAM: innocent name, but the label carries patient_id (PHI).",
+        COMMON_LABELS + ["patient_id"],
+    )
+
+
+def red_team_traffic() -> None:
+    """Background loop that increments PHI-shaped metrics."""
+    labels = _labels()
+    tick = 0
+    while True:
+        tick += 1
+        if red_team_patient_id_leaked is not None:
+            red_team_patient_id_leaked.labels(**labels).inc()
+        if red_team_mrn_lookups is not None:
+            red_team_mrn_lookups.labels(**labels).inc()
+        if red_team_vitals_by_patient is not None:
+            # Rotate a few fake patient IDs so we generate more than one series.
+            for pid in (f"P{1000 + tick % 5:04d}",):
+                red_team_vitals_by_patient.labels(**labels, patient_id=pid).inc()
+        time.sleep(2)
+
+
 def simulate_traffic() -> None:
     """Background loop that pretends to receive vitals every ~5s.
 
@@ -141,8 +205,11 @@ def index() -> tuple[str, int]:
 
 
 def main() -> None:
-    t = threading.Thread(target=simulate_traffic, daemon=True)
-    t.start()
+    threading.Thread(target=simulate_traffic, daemon=True).start()
+    if RED_TEAM_MODE:
+        print("[VitalCare mock] RED_TEAM_MODE is ON — emitting PHI-shaped metrics.")
+        print("                 These must be dropped by the OTel Collector.")
+        threading.Thread(target=red_team_traffic, daemon=True).start()
     port = int(os.getenv("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
 

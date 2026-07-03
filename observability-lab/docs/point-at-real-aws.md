@@ -33,21 +33,43 @@ cycle to complete.
 
 ## Step 1 — Create a scoped IAM policy (recommended)
 
-If you can, avoid pointing the exporter at your everyday admin
+If you can, avoid pointing the exporters at your everyday admin
 credentials. Create a read-only IAM user or role scoped to just what
-the exporter needs:
+the exporters need. The lab runs two exporters, so the policy has to
+cover both:
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ExporterMinimal",
+      "Sid": "LogMetricsExporter",
       "Effect": "Allow",
       "Action": [
         "logs:FilterLogEvents",
         "logs:DescribeLogGroups",
         "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "YACECloudWatchServiceMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "tag:GetResources",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "ec2:DescribeRegions",
+        "apigateway:GET",
+        "aps:ListWorkspaces",
+        "autoscaling:DescribeAutoScalingGroups",
+        "dms:DescribeReplicationInstances",
+        "dms:DescribeReplicationTasks",
+        "elasticache:DescribeCacheClusters",
+        "iam:ListAccountAliases",
+        "storagegateway:ListGateways",
+        "storagegateway:ListTagsForResource"
       ],
       "Resource": "*"
     }
@@ -56,7 +78,8 @@ the exporter needs:
 ```
 
 Do **not** grant `logs:PutLogEvents`, `logs:DeleteLogGroup`, or any
-`cloudwatch:Put*` — the exporter has no legitimate need to write.
+`cloudwatch:Put*` / `cloudwatch:Delete*` — the exporters have no
+legitimate need to write.
 
 Attach this policy to a dedicated IAM user, generate access keys, and
 put them in a new profile in `~/.aws/credentials`:
@@ -212,18 +235,79 @@ must not land in a public repository:
 - IAM access keys. Store them in `~/.aws/credentials` or an SSO login
   profile, never in the repo.
 
+## Step 8 — Turn on YACE for CloudWatch service metrics
+
+`cloudwatch-log-metrics` only sees signals derived from logs. To also
+see native CloudWatch metrics — RDS `DatabaseConnections`, Lambda
+`Errors`, ALB `HTTPCode_Target_5XX_Count`, and the rest — the lab
+also ships a preconfigured [YACE](https://github.com/nerdswords/yet-another-cloudwatch-exporter)
+service.
+
+```bash
+cd observability-lab
+cp exporters/yace-config.example.yaml exporters/yace-config.local.yaml
+$EDITOR exporters/yace-config.local.yaml     # tune the metric list to taste
+docker compose up -d yace
+```
+
+The example config covers RDS, SQS, Lambda, and ApplicationELB with a
+minimal high-signal metric set. All four services use **discovery
+mode** — YACE enumerates resources by tag lookup and pulls their
+metrics automatically. Two things to know:
+
+- **SQS queues without any tag will not be discovered.** YACE logs
+  `"No tagged resources made it through filtering"` when this happens.
+  Either tag your queues (`Environment=prod` is a good minimum) or
+  drop the `AWS/SQS` block from `yace-config.local.yaml`.
+- **First scrape takes ~60 seconds.** Give it a full minute before
+  looking for series in Prometheus.
+
+Verify it's flowing:
+
+```bash
+curl -s http://localhost:5001/metrics | grep '^aws_rds_' | head
+curl -s "http://localhost:9090/api/v1/query?query=aws_rds_database_connections_average" \
+  | python3 -m json.tool
+```
+
+Open the **AWS Services — RDS / Lambda / ALB Overview (YACE)** dashboard
+in Grafana. Templating on the resource dimensions YACE emits means the
+same dashboard works for any account without editing.
+
+Adding a new service (say, DynamoDB) is one block in
+`yace-config.local.yaml` and one dashboard panel. See
+[YACE's supported services](https://github.com/nerdswords/yet-another-cloudwatch-exporter/blob/master/docs/supported_services.md).
+
+## Step 9 — Extend patterns to domain-specific business signals
+
+`cloudwatch-log-metrics` gets more useful the more specific your patterns
+are. Beyond generic `ERROR`, add patterns your team already greps for
+during incidents. The updated `config.example.json` shows five common
+shapes:
+
+| Pattern | Why it matters |
+|---|---|
+| `error` | Generic baseline. Alert only on rate deltas, not raw counts. |
+| `timeout` | Lambda hitting its wall-clock limit — usually means an upstream stopped responding. |
+| `payment_dlx` | Business-critical failure token. A single hit here is worth paging. |
+| `lock_contention` | Redis/DB distributed lock failures. Often precedes user-visible slowdown by minutes. |
+| `auth_denied` | 401 / OAuth denials. Spike detection > absolute count. |
+
+The rule is that a *domain team member* should be able to point at each
+pattern and say "yes, this is worth alerting on." Anything vaguer than
+that is noise waiting to happen.
+
 ## What to do next
 
 - Add Loki + Promtail if you want raw log exploration alongside the
   derived metrics. This lab already runs Loki; wiring Promtail to
   forward CloudWatch Logs is the next natural extension.
-- Add [YACE](https://github.com/prometheus-community/yet-another-cloudwatch-exporter)
-  for CloudWatch **service** metrics (RDS, ALB, ECS, SQS, Lambda) —
-  see the parent README's "What This Lab Measures" section.
+- Extend YACE to cover DynamoDB, ElastiCache, or DocumentDB if you use
+  them. Each is one block in `yace-config.local.yaml`.
 - Compare panel-by-panel with your existing Datadog dashboards to see
   what OSS can reproduce and where Datadog still adds meaningful
   leverage. That comparison is the TPM deliverable this lab exists to
   support.
-- Extend patterns to include domain-specific business signals
-  (`payment_failed`, `order_timeout`, `oauth_denied`) so incidents are
-  detectable in Prometheus first, not only in Datadog.
+- If deploying inside a hospital or air-gapped environment, see the
+  [`hospital-remote/`](../hospital-remote/) sub-lab — same collector,
+  additional PHI defenses and outbound-only network posture.

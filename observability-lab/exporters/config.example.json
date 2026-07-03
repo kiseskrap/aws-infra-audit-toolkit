@@ -1,25 +1,65 @@
 {
   "poll_interval_seconds": 30,
   "lookback_seconds": 300,
+  "_notes": "Starter patterns. Copy this file to config.local.json (gitignored) and edit. Any label added here becomes a Prometheus label; keep them to low-cardinality dimensions such as env / service / team / domain.",
   "patterns": [
     {
+      "_note": "Generic error counter — pick this pattern first for every service you onboard.",
       "name": "error",
       "log_group": "/aws/ecs/example-api",
       "filter_pattern": "ERROR",
       "labels": {
         "env": "prod",
-        "service": "example-api"
+        "service": "example-api",
+        "team": "example-team"
       }
     },
     {
+      "_note": "Lambda hitting its wall-clock timeout. High-signal because it usually means an upstream stopped responding.",
       "name": "timeout",
       "log_group": "/aws/lambda/example-worker",
       "filter_pattern": "\"Task timed out\"",
       "labels": {
         "env": "prod",
-        "service": "example-worker"
+        "service": "example-worker",
+        "team": "example-team"
+      }
+    },
+    {
+      "_note": "Domain-specific: payment DLX / dead-letter queue arrivals. Convert your business's real failure token here.",
+      "name": "payment_dlx",
+      "log_group": "/aws/ecs/example-payment-api",
+      "filter_pattern": "\"payment.dlx\" OR \"payment_failed\" OR \"PaymentDeclined\"",
+      "labels": {
+        "env": "prod",
+        "service": "example-payment-api",
+        "team": "example-team",
+        "domain": "payment"
+      }
+    },
+    {
+      "_note": "Distributed lock contention (Redis / DB) — often precedes user-visible slowdowns.",
+      "name": "lock_contention",
+      "log_group": "/aws/ecs/example-order-api",
+      "filter_pattern": "\"lock acquire failed\" OR \"RedLock\" OR \"could not obtain lock\"",
+      "labels": {
+        "env": "prod",
+        "service": "example-order-api",
+        "team": "example-team",
+        "domain": "orders"
+      }
+    },
+    {
+      "_note": "Auth / OAuth denials from partner integrations. Not always an incident, but a spike is diagnostic.",
+      "name": "auth_denied",
+      "log_group": "/aws/ecs/example-account-api",
+      "filter_pattern": "\"401\" OR \"AccessDenied\" OR \"oauth\" \"denied\"",
+      "labels": {
+        "env": "prod",
+        "service": "example-account-api",
+        "team": "example-team",
+        "domain": "auth"
       }
     }
   ]
 }
-

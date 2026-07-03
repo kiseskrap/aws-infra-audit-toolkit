@@ -16,6 +16,7 @@ tmp/
 *.report.txt
 *.report.json
 observability-lab/exporters/config.local.json
+observability-lab/exporters/yace-config.local.yaml
 
 # editor
 .idea/

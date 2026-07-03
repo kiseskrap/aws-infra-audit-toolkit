@@ -14,3 +14,12 @@ scrape_configs:
       - targets:
           - cloudwatch-log-metrics:9108
 
+  # YACE — CloudWatch service metrics (RDS/SQS/Lambda/ALB via tag discovery).
+  - job_name: yace
+    metrics_path: /metrics
+    scrape_interval: 60s
+    scrape_timeout: 30s
+    static_configs:
+      - targets:
+          - yace:5000
+

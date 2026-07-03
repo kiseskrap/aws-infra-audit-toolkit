@@ -49,6 +49,30 @@ services:
       - ~/.aws:/root/.aws:ro
       - ./exporters/config.local.json:/app/config.json:ro
 
+  # YACE — Yet Another CloudWatch Exporter.
+  # Pulls CloudWatch service metrics (RDS, SQS, Lambda, ALB) discovered
+  # via tag-based enumeration. Complements cloudwatch-log-metrics, which
+  # only handles log-derived counters. See docs/point-at-real-aws.md.
+  #
+  # Uses --scraping-interval to match Prometheus scrape_interval.
+  # If yace-config.local.yaml is missing, the container will exit at
+  # startup; run `cp exporters/yace-config.example.yaml exporters/yace-config.local.yaml`.
+  yace:
+    image: ghcr.io/nerdswords/yet-another-cloudwatch-exporter:v0.61.2
+    command:
+      - "--config.file=/tmp/config.yml"
+      - "--scraping-interval=60"
+    environment:
+      AWS_PROFILE: ${AWS_PROFILE:-default}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-ap-northeast-2}
+    ports:
+      # host 5001 → container 5000 (macOS uses 5000 for AirPlay)
+      - "5001:5000"
+    volumes:
+      - ~/.aws:/exporter/.aws:ro
+      - ./exporters/yace-config.local.yaml:/tmp/config.yml:ro
+
 volumes:
   prometheus-data:
   grafana-data:

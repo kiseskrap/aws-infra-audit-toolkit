@@ -61,8 +61,10 @@ Prometheus is available at <http://localhost:9090>.
 > hands-on 30-minute tutorial from first run to first alert.
 >
 > Pointing at a real AWS account? See **[docs/point-at-real-aws.md](./docs/point-at-real-aws.md)** —
-> a 20-minute walkthrough that includes a scoped IAM policy, a team-level
-> rollup dashboard, and a "what not to commit" checklist.
+> a 20-minute walkthrough covering a scoped IAM policy for both exporters
+> (log-derived + YACE for CloudWatch service metrics), a team-level rollup
+> dashboard, an AWS services overview dashboard, and a "what not to
+> commit" checklist.
 >
 > On-prem clinical scenario? See **[hospital-remote/](./hospital-remote/)** — a
 > sub-lab that simulates a hospital service forwarding PHI-free operational

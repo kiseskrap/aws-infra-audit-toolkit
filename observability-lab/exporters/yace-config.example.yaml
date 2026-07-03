@@ -1,0 +1,82 @@
+# YACE (Yet Another Cloudwatch Exporter) — example config.
+#
+# Copy to yace-config.local.yaml (already blocked by .gitignore) and edit
+# for your account. See docs/point-at-real-aws.md for setup.
+#
+# This is a minimal, opinionated config. It uses discovery (tag-based)
+# to enumerate AWS resources, then pulls a small, high-signal metric
+# set. Each `type` block is one AWS service; add or remove services to
+# taste.
+
+apiVersion: v1alpha1
+
+sts-region: ap-northeast-2
+
+discovery:
+  # Export the discovered resource inventory too, so a dashboard can
+  # answer "how many RDS clusters are we watching?" without a separate
+  # AWS API call.
+  exportedTagsOnMetrics:
+    AWS/RDS: [Name, Environment]
+    AWS/SQS: [Environment]
+    AWS/Lambda: [Environment]
+    AWS/ApplicationELB: [Environment]
+
+  jobs:
+    - type: AWS/RDS
+      regions: [ap-northeast-2]
+      period: 300
+      length: 600
+      metrics:
+        - name: CPUUtilization
+          statistics: [Average, Maximum]
+        - name: DatabaseConnections
+          statistics: [Average, Maximum]
+        - name: FreeableMemory
+          statistics: [Average]
+        - name: ReadLatency
+          statistics: [Average]
+        - name: WriteLatency
+          statistics: [Average]
+
+    - type: AWS/SQS
+      regions: [ap-northeast-2]
+      period: 300
+      length: 600
+      metrics:
+        - name: ApproximateNumberOfMessagesVisible
+          statistics: [Average, Maximum]
+        - name: ApproximateAgeOfOldestMessage
+          statistics: [Maximum]
+        - name: NumberOfMessagesReceived
+          statistics: [Sum]
+        - name: NumberOfMessagesDeleted
+          statistics: [Sum]
+
+    - type: AWS/Lambda
+      regions: [ap-northeast-2]
+      period: 300
+      length: 600
+      metrics:
+        - name: Invocations
+          statistics: [Sum]
+        - name: Errors
+          statistics: [Sum]
+        - name: Duration
+          statistics: [Average, Maximum]
+        - name: Throttles
+          statistics: [Sum]
+
+    - type: AWS/ApplicationELB
+      regions: [ap-northeast-2]
+      period: 300
+      length: 600
+      metrics:
+        - name: HTTPCode_Target_5XX_Count
+          statistics: [Sum]
+        - name: HTTPCode_Target_4XX_Count
+          statistics: [Sum]
+        - name: TargetResponseTime
+          statistics: [Average]
+        - name: RequestCount
+          statistics: [Sum]

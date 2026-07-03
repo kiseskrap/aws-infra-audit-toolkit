@@ -136,36 +136,26 @@ should come with a red-team case that proves its labels do not leak.
 The script is CI-friendly: no interactive prompts, deterministic exit
 codes, all state confined to the local docker compose stack.
 
-Example GitHub Actions job:
+This repository ships a ready-to-run GitHub Actions workflow at
+[`.github/workflows/hospital-remote.yml`](../../../.github/workflows/hospital-remote.yml).
+It runs both the red-team script and the WAN outage demo on any pull
+request that touches the sub-lab. A change to the collector config that
+regresses either defense will fail the job — the point of the workflow
+is to make regressions loud.
 
-```yaml
-name: phi-defense
-on: [pull_request]
-jobs:
-  red-team:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Start hospital-remote stack
-        working-directory: observability-lab/hospital-remote
-        run: docker compose up -d --build
-      - name: Wait for stack readiness
-        run: |
-          for _ in $(seq 1 30); do
-            curl -sf http://localhost:9091/-/ready && break
-            sleep 2
-          done
-      - name: Run red-team
-        working-directory: observability-lab/hospital-remote
-        run: ./scripts/red-team-phi.sh
-      - name: Tear down
-        if: always()
-        working-directory: observability-lab/hospital-remote
-        run: docker compose down -v
+The workflow triggers on `push` to `main` and on any `pull_request` that
+touches `observability-lab/hospital-remote/**` or the workflow file
+itself. Two jobs run in parallel (`red-team-phi` and `wan-outage-buffering`),
+each on its own runner with its own docker compose stack.
+
+Local reproduction:
+
+```bash
+cd observability-lab/hospital-remote
+docker compose up -d --build
+./scripts/red-team-phi.sh   # should exit 0
+docker compose down -v
 ```
-
-A change to the collector config that regresses the defense will fail this
-job. That is the point.
 
 ## Extending the test
 

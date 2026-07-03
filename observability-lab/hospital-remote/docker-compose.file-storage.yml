@@ -1,0 +1,28 @@
+# Compose overlay — enable the file_storage variant of the collector.
+#
+# This is a production-ish template that persists the sending_queue to a
+# named volume so the queue survives collector restarts. The default lab
+# flow (docker-compose.yml alone) uses an in-memory queue.
+#
+# Usage:
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f docker-compose.file-storage.yml \
+#     up -d --build
+#
+# The `docker compose down -v` command will delete the named volume,
+# effectively "wiping the disk" — useful when you want to see the
+# in-memory behavior instead.
+
+services:
+  otel-collector:
+    command: ["--config=/etc/otel/config.file-storage.yaml"]
+    volumes:
+      # Replace the default config mount with the file_storage variant.
+      - ./on-prem/otel-collector/config.file-storage.yaml:/etc/otel/config.file-storage.yaml:ro
+      # Persistent queue directory.
+      - otelcol_queue:/var/lib/otelcol/queue
+
+volumes:
+  otelcol_queue:
+    name: hospital-remote-otelcol-queue

@@ -178,29 +178,71 @@ worst outage you must survive.
 
 ## Extending to a real deployment
 
-The lab uses in-memory queueing only. A production deployment should add
-the collector's `file_storage` extension so the queue survives collector
-restarts and outages longer than physical memory allows:
+### file_storage: on-disk queue that survives collector restarts
 
-```yaml
-extensions:
-  file_storage:
-    directory: /var/lib/otelcol/queue
-    timeout: 1s
+The default lab flow uses an in-memory queue. That is fine for
+demonstrating the pattern, but it has two limits:
 
-exporters:
-  prometheusremotewrite:
-    endpoint: https://metrics-ingest.<vendor>.example.com/api/v1/write
-    sending_queue:
-      enabled: true
-      storage: file_storage      # <-- persist to disk
-      queue_size: 100000
+- **Collector restart wipes the queue.** If the on-prem collector
+  restarts during a WAN outage — deploy, machine reboot, OOM — everything
+  in RAM is gone.
+- **Multi-hour outages** can outgrow the RAM budget.
+
+The collector's `file_storage` extension solves both by persisting the
+queue to disk. This lab ships a ready-to-use variant.
+
+**Activate it:**
+
+```bash
+cd observability-lab/hospital-remote
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.file-storage.yml \
+  up -d --build
 ```
 
-Sizing reminder from the parent doc: for a service emitting ~50 samples per
-15-second scrape, a 24-hour WAN outage produces ~288 000 samples. Give the
-disk queue enough headroom and put it on a dedicated volume (not shared
-with clinical data).
+The overlay swaps in `on-prem/otel-collector/config.file-storage.yaml`
+and mounts a named volume `hospital-remote-otelcol-queue` at
+`/var/lib/otelcol/queue` inside the collector container.
+
+The variant differs from the default config in three ways:
+
+| Aspect | Default (in-memory) | file_storage variant |
+|---|---|---|
+| Queue location | RAM | On-disk (`/var/lib/otelcol/queue`) |
+| `queue_size` | 10,000 batches | 200,000 batches |
+| `max_elapsed_time` | 15m | 6h |
+| Survives restart? | ❌ | ✅ |
+
+Reason for the differences: disk is cheap, so the queue can be much
+larger; and if you are already paying for disk persistence, the retry
+budget should reflect a realistic hospital WAN outage window
+(hours, not minutes).
+
+**Demonstrate the restart-survival behavior manually:**
+
+```bash
+# 1. Bring up the file_storage variant.
+docker compose -f docker-compose.yml -f docker-compose.file-storage.yml up -d --build
+
+# 2. Simulate WAN loss.
+docker compose stop cloud-prometheus
+
+# 3. Kill the collector midway to prove disk persistence.
+docker compose kill otel-collector
+docker compose up -d otel-collector
+
+# 4. Bring the cloud back.
+docker compose start cloud-prometheus
+
+# 5. Verify: buffered samples arrive after both the WAN and the
+#    collector restart. `vitalcare_vitals_received_total` should show a
+#    continuous line in Grafana without a gap.
+```
+
+**Sizing reminder**: for a service emitting ~50 samples per 15-second
+scrape, a 24-hour WAN outage produces ~288 000 samples. Put the queue on
+a dedicated volume, not shared with any clinical data path.
 
 ## What is still out of scope for this lab
 

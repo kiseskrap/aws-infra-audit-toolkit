@@ -1,0 +1,138 @@
+name: hospital-remote
+
+# Runs the two hospital-remote verification scripts on every change.
+# Purpose: catch regressions in the PHI defense pipeline and the WAN
+# outage buffering pipeline before they land on main.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "observability-lab/hospital-remote/**"
+      - ".github/workflows/hospital-remote.yml"
+  pull_request:
+    paths:
+      - "observability-lab/hospital-remote/**"
+      - ".github/workflows/hospital-remote.yml"
+
+jobs:
+  red-team-phi:
+    name: red-team PHI defense
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: observability-lab/hospital-remote
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bring up the hospital-remote stack
+        run: docker compose up -d --build
+
+      - name: Wait for cloud Prometheus readiness
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:9091/-/ready >/dev/null; then
+              echo "cloud Prometheus is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "cloud Prometheus never became ready"
+          docker compose logs --tail 50 cloud-prometheus
+          exit 1
+
+      - name: Wait for pipeline flow
+        run: |
+          for _ in $(seq 1 30); do
+            v=$(curl -sf "http://localhost:9091/api/v1/query?query=vitalcare_service_up" \
+                | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d["data"]["result"]))' 2>/dev/null || echo 0)
+            if [ "$v" -gt 0 ]; then
+              echo "pipeline is flowing"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "no vitalcare_service_up samples arrived within 60s"
+          docker compose logs --tail 100 otel-collector
+          exit 1
+
+      - name: Run red-team script
+        run: ./scripts/red-team-phi.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          echo "=== otel-collector ==="
+          docker compose logs --tail 200 otel-collector || true
+          echo "=== cloud-prometheus ==="
+          docker compose logs --tail 200 cloud-prometheus || true
+          echo "=== vitalcare-mock ==="
+          docker compose logs --tail 200 vitalcare-mock || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  wan-outage-buffering:
+    name: WAN outage buffering
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: observability-lab/hospital-remote
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bring up the hospital-remote stack
+        run: docker compose up -d --build
+
+      - name: Wait for cloud Prometheus readiness
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:9091/-/ready >/dev/null; then
+              echo "cloud Prometheus is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "cloud Prometheus never became ready"
+          docker compose logs --tail 50 cloud-prometheus
+          exit 1
+
+      - name: Wait for pipeline flow
+        run: |
+          for _ in $(seq 1 30); do
+            v=$(curl -sf "http://localhost:9091/api/v1/query?query=vitalcare_service_up" \
+                | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d["data"]["result"]))' 2>/dev/null || echo 0)
+            if [ "$v" -gt 0 ]; then
+              echo "pipeline is flowing"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "no vitalcare_service_up samples arrived within 60s"
+          exit 1
+
+      # Let one more clean scrape cycle happen so the counter has real
+      # movement before the demo starts.
+      - name: Additional settle time
+        run: sleep 30
+
+      - name: Run WAN outage demo
+        # Slightly looser tolerance in CI: ubuntu-latest runners are noisier
+        # than a laptop, and the scrape+drain windows may drift a little.
+        env:
+          LOSS_TOLERANCE_PCT: "20"
+          DRAIN_SECONDS: "90"
+        run: ./scripts/wan-outage-demo.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          echo "=== otel-collector ==="
+          docker compose logs --tail 200 otel-collector || true
+          echo "=== cloud-prometheus ==="
+          docker compose logs --tail 200 cloud-prometheus || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

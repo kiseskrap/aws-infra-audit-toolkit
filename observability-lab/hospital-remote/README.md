@@ -125,17 +125,19 @@ to a persistent disk queue for production.
 ```text
 hospital-remote/
 ├── README.md                                ← this file
-├── docker-compose.yml
+├── docker-compose.yml                       ← default: in-memory queue
+├── docker-compose.file-storage.yml          ← overlay: disk-persisted queue (production template)
 ├── on-prem/
 │   ├── vitalcare-mock/                      ← Flask + prometheus_client, no PHI (unless RED_TEAM_MODE)
 │   │   ├── vitalcare_mock.py
 │   │   ├── requirements.txt
 │   │   └── Dockerfile
 │   └── otel-collector/
-│       └── config.yaml                      ← PHI allow-list + drop rules
+│       ├── config.yaml                      ← default in-memory pipeline
+│       └── config.file-storage.yaml         ← disk-backed queue variant
 ├── cloud/
 │   ├── prometheus/
-│   │   └── prometheus.yml                   ← remote-write receiver
+│   │   └── prometheus.yml                   ← OTLP + remote-write receiver + OOO tolerance
 │   └── grafana/
 │       ├── provisioning/                    ← datasource + dashboard provider
 │       └── dashboards/
@@ -146,8 +148,9 @@ hospital-remote/
 └── docs/
     ├── phi-protection.md                    ← how PHI is prevented from leaving
     ├── network-boundary.md                  ← single-endpoint outbound design
-    ├── offline-behavior.md                  ← what happens when the WAN is down (+ demo)
-    └── red-team.md                          ← how the verification works + CI usage
+    ├── offline-behavior.md                  ← what happens when the WAN is down (+ demo + file_storage)
+    ├── red-team.md                          ← how the verification works + CI usage
+    └── applicability.md                     ← how a clinical vendor actually adopts this pattern
 ```
 
 ## Design principles (read before extending)

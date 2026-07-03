@@ -1,0 +1,116 @@
+# OTel Collector config — file_storage variant.
+#
+# Same pipeline as config.yaml, but the sending_queue is backed by an
+# on-disk file_storage extension. This is the pattern a production
+# deployment should use.
+#
+# Difference vs config.yaml:
+#   - Adds extensions.file_storage.
+#   - exporters.otlphttp.sending_queue.storage points to it.
+#   - Increases queue_size (disk is cheaper than RAM).
+#
+# When to use this file:
+#   - Real hospital deployments where the WAN outage might exceed the
+#     collector's in-memory retention (default in-memory queue holds up to
+#     ~24h of a modest sample rate but does NOT survive a restart).
+#   - Any deployment that must promise "zero sample loss across a
+#     collector restart during a WAN outage".
+#
+# When NOT to use this file:
+#   - The default lab flow: config.yaml is enough for the wan-outage-demo.
+#   - Tests that want to see the collector cold-start behavior without
+#     backfilling from prior runs.
+#
+# Local activation:
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f docker-compose.file-storage.yml \
+#     up -d --build
+
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: vitalcare-mock
+          scrape_interval: 10s
+          static_configs:
+            - targets:
+                - vitalcare-mock:8080
+              labels:
+                origin: hospital-on-prem
+
+processors:
+  batch:
+    send_batch_size: 500
+    timeout: 5s
+
+  transform/allowlist:
+    metric_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["hospital_id", "ward_id", "service_version", "origin", "collector.id"])
+      - context: datapoint
+        statements:
+          - keep_keys(attributes, ["hospital_id", "ward_id", "service_version", "origin", "error_class"])
+
+  filter/drop_phi_metrics:
+    metrics:
+      metric:
+        - 'IsMatch(name, ".*_patient_id_.*")'
+        - 'IsMatch(name, ".*_mrn_.*")'
+        - 'IsMatch(name, ".*_name.*")'
+        - 'IsMatch(name, ".*_ssn.*")'
+
+  resource/tag:
+    attributes:
+      - key: collector.id
+        value: hospital-otel-collector
+        action: insert
+
+extensions:
+  # Persist the sending_queue to disk so it survives collector restarts.
+  # In a production deployment, place this on a dedicated volume, not on
+  # the same disk as any clinical data.
+  file_storage:
+    directory: /var/lib/otelcol/queue
+    # Freshness of the file lock. Do not lower below 1s.
+    timeout: 1s
+
+exporters:
+  otlphttp:
+    metrics_endpoint: http://cloud-prometheus:9090/api/v1/otlp/v1/metrics
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      num_consumers: 4
+      # Disk is cheap; size the queue for the worst outage you must survive.
+      # For a service emitting ~50 samples per 15s scrape, 200000 batches
+      # covers many hours of outage comfortably.
+      queue_size: 200000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      # Keep trying for hours in a real hospital deployment. Losing a
+      # sample after 15 minutes is not acceptable here.
+      max_elapsed_time: 6h
+
+  debug:
+    verbosity: basic
+    sampling_initial: 2
+    sampling_thereafter: 200
+
+service:
+  extensions: [file_storage]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors:
+        - resource/tag
+        - transform/allowlist
+        - filter/drop_phi_metrics
+        - batch
+      exporters: [otlphttp, debug]

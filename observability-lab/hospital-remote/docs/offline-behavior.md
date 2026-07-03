@@ -84,24 +84,131 @@ Recommended defaults for a real deployment:
 - Retention semantics: drop oldest when full, always keep the newest
 - Alarm: local alarm when buffer usage exceeds 70 %
 
-## What is out of scope for this lab
+## Automated WAN outage demo
 
-The local lab does not simulate WAN loss automatically. To see the intended
-behavior, disrupt it manually:
+The scenario above is automated as
+[`scripts/wan-outage-demo.sh`](../scripts/wan-outage-demo.sh). It exists so
+"WAN loss is safe" is a reproducible claim, not an assertion.
+
+Preconditions: stack is up (`docker compose up -d`), all four containers
+running, cloud Prometheus reachable at <http://localhost:9091>.
+
+Run it:
 
 ```bash
-# Simulate cloud ingest failure:
-docker compose stop cloud-prometheus
-
-# Wait ~5 minutes. The collector's logs should now show export failures.
-docker compose logs otel-collector --tail 20
-
-# Bring the cloud back:
-docker compose start cloud-prometheus
-
-# The Grafana dashboard should recover within the next scrape cycle.
+cd observability-lab/hospital-remote
+./scripts/wan-outage-demo.sh
 ```
 
-Longer outages, buffered-to-disk semantics, and rate-limited recovery are all
-straightforward to add in a real deployment but are intentionally omitted here
-to keep the lab small.
+Expected output on a healthy stack:
+
+```
+[wan-demo] preflight OK
+[wan-demo] step 1 — establishing baseline (pipeline is flowing)
+[wan-demo] ✅ baseline cloud counter = 43
+[wan-demo] step 2 — simulating WAN outage: stopping cloud-prometheus
+[wan-demo]   on-prem counter at start of outage: 51
+[wan-demo]   outage in progress — sleeping 60s
+[wan-demo]   on-prem counter at end of outage: 108 (Δ=57 produced during outage)
+[wan-demo] ✅ on-prem service kept producing during the outage (Δ=57 samples)
+[wan-demo] step 3 — WAN recovery: starting cloud-prometheus
+[wan-demo]   cloud Prometheus is up. draining collector queue for 45s…
+[wan-demo] step 4 — verifying backfill
+[wan-demo]   on-prem now: 132
+[wan-demo]   cloud now:   130
+[wan-demo]   gap: 2 samples (tolerance 5)
+
+[wan-demo] ✅ PASS — backfill closed the outage gap within tolerance
+```
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | PASS — collector queued through outage and cloud caught up on recovery |
+| 1 | FAIL — significant sample loss detected |
+| 2 | Infra error — stack not up or curl missing |
+
+Tunables via env: `OUTAGE_SECONDS` (default 60), `DRAIN_SECONDS` (default 45),
+`LOSS_TOLERANCE_PCT` (default 5).
+
+### What the script actually verifies
+
+1. **On-prem keeps running during the outage.** The mock's local
+   `vitalcare_vitals_received_total` counter must increase while
+   cloud-prometheus is stopped. If it does not, the offline invariant is
+   already broken and the rest of the pipeline is irrelevant.
+2. **Collector buffers samples.** The `sending_queue` configured on the
+   `prometheusremotewrite` exporter keeps samples in memory while the
+   remote endpoint is unreachable.
+3. **Recovery backfills.** After cloud-prometheus restarts, the collector's
+   background workers drain the queue. The cloud counter should catch up to
+   within a small tolerance of the on-prem counter.
+
+## What the collector is configured to do (this lab)
+
+From `on-prem/otel-collector/config.yaml`:
+
+```yaml
+prometheusremotewrite:
+  endpoint: http://cloud-prometheus:9090/api/v1/write
+  sending_queue:
+    enabled: true
+    num_consumers: 4
+    queue_size: 10000
+  retry_on_failure:
+    enabled: true
+    initial_interval: 5s
+    max_interval: 30s
+    max_elapsed_time: 15m
+```
+
+Interpretation:
+
+- `sending_queue.queue_size: 10000` — the collector will hold up to 10 000
+  batches in memory before it starts dropping oldest.
+- `retry_on_failure.max_elapsed_time: 15m` — after 15 minutes of failure
+  the collector will give up on a batch (and the queue will drop it).
+- `num_consumers: 4` — four concurrent drain workers on recovery, so the
+  backfill catches up faster than the current scrape rate.
+
+For a lab with 5-second sampling and ~10 samples per scrape, 10 000 batches
+easily covers a multi-hour outage. In production, size the queue for the
+worst outage you must survive.
+
+## Extending to a real deployment
+
+The lab uses in-memory queueing only. A production deployment should add
+the collector's `file_storage` extension so the queue survives collector
+restarts and outages longer than physical memory allows:
+
+```yaml
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/queue
+    timeout: 1s
+
+exporters:
+  prometheusremotewrite:
+    endpoint: https://metrics-ingest.<vendor>.example.com/api/v1/write
+    sending_queue:
+      enabled: true
+      storage: file_storage      # <-- persist to disk
+      queue_size: 100000
+```
+
+Sizing reminder from the parent doc: for a service emitting ~50 samples per
+15-second scrape, a 24-hour WAN outage produces ~288 000 samples. Give the
+disk queue enough headroom and put it on a dedicated volume (not shared
+with clinical data).
+
+## What is still out of scope for this lab
+
+- **Rate-limited recovery** to protect the cloud ingest from thundering-herd
+  behaviour when many hospital sites reconnect at once. Real vendors add
+  jittered backoff on the ingest side.
+- **Regional failover** — if the primary cloud region is unreachable, does
+  the collector fall through to a secondary? This lab uses a single
+  endpoint by design (see `network-boundary.md`).
+- **Explicit alerts on the cloud side** for "no samples from tenant X in
+  Y minutes". Alertmanager is deliberately excluded from this lab.

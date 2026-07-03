@@ -10,6 +10,14 @@ global:
   external_labels:
     tenant: hospital-remote-lab
 
+# Accept out-of-order samples up to 10 minutes stale.
+# Required for backfill after a WAN outage: the collector's sending_queue
+# replays samples with timestamps from before the outage recovered.
+# See docs/offline-behavior.md.
+storage:
+  tsdb:
+    out_of_order_time_window: 10m
+
 # Prometheus itself does not need to scrape anything in this scenario:
 # the hospital OTel Collector pushes samples in via remote-write.
 scrape_configs:

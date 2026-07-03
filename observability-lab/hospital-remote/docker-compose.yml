@@ -28,7 +28,8 @@ services:
       - lab
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.104.0
+    # 0.115+ is needed for prometheusremotewrite exporter's sending_queue.
+    image: otel/opentelemetry-collector-contrib:0.115.1
     container_name: hospital-otel-collector
     command: ["--config=/etc/otel/config.yaml"]
     volumes:
@@ -47,6 +48,13 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=6h"
+      # OTLP receiver at /api/v1/otlp/v1/metrics — the collector's
+      # otlphttp exporter writes here so we can use its sending_queue for
+      # WAN outage buffering. See docs/offline-behavior.md.
+      # v2.53 gates it behind a feature flag; v2.55+ has a stable
+      # --web.enable-otlp-receiver flag.
+      - "--enable-feature=otlp-write-receiver"
+      # Keep remote-write enabled for the parent lab's compatibility.
       - "--web.enable-remote-write-receiver"
     volumes:
       - ./cloud/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro

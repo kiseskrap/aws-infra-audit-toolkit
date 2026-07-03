@@ -102,6 +102,24 @@ queries the cloud Prometheus to confirm none of them arrived. Exit code
 See [docs/red-team.md](./docs/red-team.md) for how this is designed,
 what each attack vector tests, and how to wire it into CI.
 
+## Verify WAN outage behavior (automated)
+
+The second claim — that a WAN outage does not lose samples — is verified
+by an outage-demo script:
+
+```bash
+./scripts/wan-outage-demo.sh
+```
+
+The script stops `cloud-prometheus` for 60 seconds (simulating WAN loss),
+then starts it again and confirms the collector's in-memory queue
+backfills the outage window into the cloud. Exit code 0 = PASS,
+1 = data loss beyond tolerance, 2 = infra error.
+
+See [docs/offline-behavior.md](./docs/offline-behavior.md) for the
+buffering design, tuning knobs, and how to extend the in-memory queue
+to a persistent disk queue for production.
+
 ## Files
 
 ```text
@@ -123,11 +141,12 @@ hospital-remote/
 │       └── dashboards/
 │           └── vitalcare-service-health.json
 ├── scripts/
-│   └── red-team-phi.sh                      ← automated PHI defense verification
+│   ├── red-team-phi.sh                      ← automated PHI defense verification
+│   └── wan-outage-demo.sh                   ← simulate WAN loss + verify backfill
 └── docs/
     ├── phi-protection.md                    ← how PHI is prevented from leaving
     ├── network-boundary.md                  ← single-endpoint outbound design
-    ├── offline-behavior.md                  ← what happens when the WAN is down
+    ├── offline-behavior.md                  ← what happens when the WAN is down (+ demo)
     └── red-team.md                          ← how the verification works + CI usage
 ```
 

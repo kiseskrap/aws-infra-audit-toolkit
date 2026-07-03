@@ -65,18 +65,46 @@ processors:
         action: insert
 
 exporters:
-  # Forward to the cloud Prometheus via remote-write.
-  # In production, this endpoint is Grafana Cloud, AWS Managed Prometheus,
-  # or your own Mimir/Cortex deployment. HTTPS + bearer/mTLS auth.
-  prometheusremotewrite:
-    endpoint: http://cloud-prometheus:9090/api/v1/write
+  # Forward to the cloud via OTLP HTTP.
+  #
+  # Why OTLP and not prometheusremotewrite:
+  #   - The exporterhelper's sending_queue (in-memory queueing during WAN
+  #     outages) is fully supported by otlphttp but not by prometheusremotewrite.
+  #     Since surviving WAN outages without sample loss is a core claim of
+  #     this lab, we use OTLP.
+  #   - Prometheus v2.47+ ships an OTLP receiver on
+  #     /api/v1/otlp/v1/metrics when --web.enable-otlp-receiver is passed
+  #     (see cloud/prometheus in docker-compose.yml).
+  #   - Grafana Cloud, AWS Managed Prometheus, and Mimir all accept OTLP
+  #     via the same path.
+  otlphttp:
+    metrics_endpoint: http://cloud-prometheus:9090/api/v1/otlp/v1/metrics
     # In a real deployment:
     #   headers:
     #     Authorization: "Bearer ${env:CLOUD_INGEST_TOKEN}"
     #   tls:
     #     ca_file: /etc/otel/ca.pem
-    resource_to_telemetry_conversion:
+
+    # WAN OUTAGE PROTECTION
+    # See docs/offline-behavior.md.
+    #
+    # sending_queue keeps samples in memory while the cloud endpoint is
+    # unreachable. On the collector's next scrape cycle the queue continues
+    # to fill; when the cloud recovers, the queue is drained in the
+    # background so a backfill is visible in Grafana.
+    #
+    # In production, add a file_storage extension to make the queue
+    # survive collector restarts and to move the buffer to disk. The
+    # lab uses in-memory only to keep the container ephemeral.
+    sending_queue:
       enabled: true
+      num_consumers: 4
+      queue_size: 10000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 15m
 
   # Debug: log a summary of what the pipeline is emitting.
   # Useful during onboarding, remove in production.
@@ -101,4 +129,4 @@ service:
         - filter/drop_phi_metrics
         # 4. Batch and export.
         - batch
-      exporters: [prometheusremotewrite, debug]
+      exporters: [otlphttp, debug]

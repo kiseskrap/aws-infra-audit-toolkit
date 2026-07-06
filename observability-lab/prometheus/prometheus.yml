@@ -23,3 +23,13 @@ scrape_configs:
       - targets:
           - yace:5000
 
+  # Pushgateway — deploy events pushed by CI or ops. See
+  # docs/deployment-annotations.md. honor_labels lets pushed labels
+  # (service, env, version, source) survive the scrape.
+  - job_name: pushgateway
+    honor_labels: true
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - pushgateway:9091
+

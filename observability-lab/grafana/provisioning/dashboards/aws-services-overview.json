@@ -4,11 +4,27 @@
   "description": "CloudWatch service metrics pulled via YACE (yet-another-cloudwatch-exporter). Complements the log-derived metrics from cloudwatch-log-metrics. Panels template on the resource dimensions YACE emits so this works for any AWS account.",
   "tags": ["yace", "aws", "cloudwatch"],
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "graphTooltip": 1,
   "time": {"from": "now-3h", "to": "now"},
   "refresh": "1m",
+  "annotations": {
+    "list": [
+      {
+        "name": "Deployments",
+        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "enable": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "expr": "deploy_event",
+        "step": "60s",
+        "tagKeys": "service,env,version,source",
+        "titleFormat": "deploy {{service}} {{version}}",
+        "textFormat": "env={{env}} source={{source}}",
+        "useValueForTime": true
+      }
+    ]
+  },
   "templating": {
     "list": [
       {

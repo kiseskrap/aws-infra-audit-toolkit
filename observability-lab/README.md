@@ -66,6 +66,11 @@ Prometheus is available at <http://localhost:9090>.
 > dashboard, an AWS services overview dashboard, and a "what not to
 > commit" checklist.
 >
+> Want deploy markers on the graphs? See **[docs/deployment-annotations.md](./docs/deployment-annotations.md)** —
+> a 10-minute wire-up (Pushgateway + one `curl` from CI) that draws a
+> vertical line at every deployment so operators can correlate error
+> spikes against deploys in one glance.
+>
 > On-prem clinical scenario? See **[hospital-remote/](./hospital-remote/)** — a
 > sub-lab that simulates a hospital service forwarding PHI-free operational
 > metrics to a remote cloud backend over a single outbound endpoint.

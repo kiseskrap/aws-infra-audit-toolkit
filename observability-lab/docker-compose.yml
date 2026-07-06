@@ -73,6 +73,15 @@ services:
       - ~/.aws:/exporter/.aws:ro
       - ./exporters/yace-config.local.yaml:/tmp/config.yml:ro
 
+  # Prometheus Pushgateway — receives short-lived job metrics from CI or
+  # deploy hooks. In this lab we use it to record "deploy events" so
+  # Grafana can annotate the dashboards with a vertical line at each
+  # deployment. See docs/deployment-annotations.md.
+  pushgateway:
+    image: prom/pushgateway:v1.10.0
+    ports:
+      - "9091:9091"
+
 volumes:
   prometheus-data:
   grafana-data:

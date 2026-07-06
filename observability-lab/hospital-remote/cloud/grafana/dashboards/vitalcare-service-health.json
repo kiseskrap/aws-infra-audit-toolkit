@@ -1,10 +1,13 @@
 {
   "uid": "vitalcare-service-health",
-  "title": "VitalCare — Service Health (PHI-free)",
+  "title": "VitalCare \u2014 Service Health (PHI-free)",
   "description": "Aggregated operational metrics forwarded from the hospital OTel Collector. Contains no patient data.",
-  "tags": ["hospital-remote", "vitalcare"],
+  "tags": [
+    "hospital-remote",
+    "vitalcare"
+  ],
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "graphTooltip": 1,
   "time": {
@@ -17,7 +20,10 @@
       {
         "name": "hospital_id",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "hospital-cloud-prom"
+        },
         "query": "label_values(vitalcare_service_up, hospital_id)",
         "refresh": 2,
         "includeAll": true,
@@ -26,7 +32,10 @@
       {
         "name": "ward_id",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "hospital-cloud-prom"
+        },
         "query": "label_values(vitalcare_service_up{hospital_id=~\"$hospital_id\"}, ward_id)",
         "refresh": 2,
         "includeAll": true,
@@ -36,11 +45,34 @@
   },
   "panels": [
     {
+      "id": 0,
+      "type": "text",
+      "title": "How to read this dashboard",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## VitalCare service health \u2014 remote view (PHI-free)\n\nThis dashboard shows the on-prem VitalCare service through a **narrow, aggregated, PHI-free metrics channel** forwarded from the hospital OTel Collector. No patient data ever reaches this dashboard.\n\n| If you see... | It means... | Do... |\n| --- | --- | --- |\n| **Service Up** = 0 or missing | On-prem service is down OR the WAN connection to the hospital is down | Ping the on-prem contact. On-prem operators keep local visibility even when the cloud side is silent. |\n| **Error rate** yellow (>2%) or red (>5%) | Real processing errors in the ward | Contact the on-prem site. Read `Errors by class` for the class name \u2014 this is bounded and non-PHI. |\n| **Active Patients** dropped abruptly to 0 | Either the ward genuinely emptied, or the metric emitter crashed | Cross-check `Vitals received per second` \u2014 if that also dropped, it's the emitter. |\n| **PHI protection audit** table shows *any* unexpected label | \u26a0\ufe0f COMPLIANCE INCIDENT \u2014 the collector allow-list has drifted | Do not troubleshoot from this side. Escalate. See `docs/red-team.md`. |\n| Everything flat and green | \u2705 good state | Move on. |\n\n**Failure of this dashboard itself** (all panels no-data): usually a WAN outage, not a hospital-side problem. The collector's `sending_queue` will buffer through it \u2014 see `docs/offline-behavior.md`. The service is still safe; only *remote visibility* is degraded.\n\n**Never** ask the hospital to modify the clinical service to work around an observability problem. Observability failure must not cascade into patient-care failure. See `docs/network-boundary.md`."
+      }
+    },
+    {
       "id": 1,
       "type": "stat",
       "title": "Service Up",
-      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-cloud-prom"
+      },
       "targets": [
         {
           "expr": "avg(vitalcare_service_up{hospital_id=~\"$hospital_id\",ward_id=~\"$ward_id\"})",
@@ -52,7 +84,11 @@
         "colorMode": "background",
         "graphMode": "none",
         "textMode": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"]}
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -62,8 +98,14 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "red", "value": null},
-              {"color": "green", "value": 1}
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
             ]
           }
         }
@@ -73,8 +115,16 @@
       "id": 2,
       "type": "stat",
       "title": "Active Patients (aggregated)",
-      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-cloud-prom"
+      },
       "targets": [
         {
           "expr": "sum(vitalcare_active_patient_count{hospital_id=~\"$hospital_id\",ward_id=~\"$ward_id\"})",
@@ -82,15 +132,34 @@
           "refId": "A"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
-      "fieldConfig": {"defaults": {"unit": "short"}}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Error rate (last 5m)",
-      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-cloud-prom"
+      },
       "targets": [
         {
           "expr": "sum(rate(vitalcare_vitals_processing_errors_total{hospital_id=~\"$hospital_id\",ward_id=~\"$ward_id\"}[5m])) / clamp_min(sum(rate(vitalcare_vitals_received_total{hospital_id=~\"$hospital_id\",ward_id=~\"$ward_id\"}[5m])), 0.001)",
@@ -98,16 +167,32 @@
           "refId": "A"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area"
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 0.02},
-              {"color": "red", "value": 0.05}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.02
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
             ]
           }
         }
@@ -117,8 +202,16 @@
       "id": 4,
       "type": "timeseries",
       "title": "Vitals received per second (by ward)",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
-      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-cloud-prom"
+      },
       "targets": [
         {
           "expr": "sum by (hospital_id, ward_id) (rate(vitalcare_vitals_received_total{hospital_id=~\"$hospital_id\",ward_id=~\"$ward_id\"}[1m]))",
@@ -126,14 +219,26 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "reqps"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        }
+      }
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "Processing latency (p50 / p95 / p99)",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
-      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-cloud-prom"
+      },
       "targets": [
         {
           "expr": "histogram_quantile(0.50, sum by (le) (rate(vitalcare_vitals_processing_duration_seconds_bucket{hospital_id=~\"$hospital_id\",ward_id=~\"$ward_id\"}[5m])))",
@@ -151,14 +256,26 @@
           "refId": "C"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "s"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
     },
     {
       "id": 6,
       "type": "timeseries",
       "title": "Errors by class",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
-      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-cloud-prom"
+      },
       "targets": [
         {
           "expr": "sum by (error_class) (rate(vitalcare_vitals_processing_errors_total{hospital_id=~\"$hospital_id\",ward_id=~\"$ward_id\"}[5m]))",
@@ -166,15 +283,27 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "eps"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "eps"
+        }
+      }
     },
     {
       "id": 7,
       "type": "table",
-      "title": "PHI protection audit — label allow-list only",
-      "description": "This panel confirms that only the allow-listed labels appear on VitalCare metrics. If any unexpected label appears here, the OTel Collector allow-list is misconfigured — this is a compliance incident.",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
-      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "title": "PHI protection audit \u2014 label allow-list only",
+      "description": "This panel confirms that only the allow-listed labels appear on VitalCare metrics. If any unexpected label appears here, the OTel Collector allow-list is misconfigured \u2014 this is a compliance incident.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-cloud-prom"
+      },
       "targets": [
         {
           "expr": "count by (__name__, hospital_id, ward_id, service_version, origin, collector_id) (vitalcare_vitals_received_total)",
@@ -183,7 +312,9 @@
           "refId": "A"
         }
       ],
-      "options": {"showHeader": true}
+      "options": {
+        "showHeader": true
+      }
     }
   ]
 }

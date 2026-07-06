@@ -8,7 +8,7 @@
     "cloudwatch"
   ],
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "graphTooltip": 1,
   "time": {
@@ -286,7 +286,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 26
       },
       "collapsed": false
     },
@@ -298,7 +298,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 27
       },
       "datasource": {
         "type": "prometheus",
@@ -325,7 +325,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 27
       },
       "datasource": {
         "type": "prometheus",
@@ -355,7 +355,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 35
       },
       "datasource": {
         "type": "prometheus",
@@ -382,7 +382,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 26
+        "y": 35
       },
       "datasource": {
         "type": "prometheus",
@@ -433,7 +433,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 26
+        "y": 35
       },
       "datasource": {
         "type": "prometheus",
@@ -480,7 +480,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 39
       },
       "collapsed": false
     },
@@ -493,7 +493,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 31
+        "y": 40
       },
       "datasource": {
         "type": "prometheus",
@@ -545,7 +545,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 31
+        "y": 40
       },
       "datasource": {
         "type": "prometheus",
@@ -679,7 +679,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 48
       },
       "collapsed": false
     },
@@ -691,7 +691,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 40
+        "y": 58
       },
       "datasource": {
         "type": "prometheus",
@@ -718,7 +718,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 40
+        "y": 58
       },
       "datasource": {
         "type": "prometheus",
@@ -745,7 +745,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 48
+        "y": 66
       },
       "description": "One row per ALB discovered by YACE. Sanity-check that the expected load balancers are all listed here.",
       "datasource": {
@@ -779,6 +779,334 @@
           }
         }
       ],
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 150,
+      "type": "row",
+      "title": "RDS \u2014 Triage (which cluster is high and why)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "collapsed": false
+    },
+    {
+      "id": 151,
+      "type": "table",
+      "title": "RDS \u2014 Top clusters by peak CPU (last 15m)",
+      "description": "Sorted by max CPU over the last 15 minutes. A cluster near 100% during off-peak hours warrants a slow-query check.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "topk(10, max by (dimension_DBClusterIdentifier) (max_over_time(aws_rds_cpuutilization_maximum[15m])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "renameByName": {
+              "dimension_DBClusterIdentifier": "cluster",
+              "Value": "peak CPU %"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "peak CPU %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 50
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 152,
+      "type": "table",
+      "title": "RDS \u2014 Top clusters by connections (avg)",
+      "description": "Connection totals. A step-change here after a deploy usually means a connection-pool config regression on the app side.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "topk(10, avg by (dimension_DBClusterIdentifier) (avg_over_time(aws_rds_database_connections_average[15m])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "renameByName": {
+              "dimension_DBClusterIdentifier": "cluster",
+              "Value": "avg connections"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 350,
+      "type": "row",
+      "title": "ALB \u2014 Triage (which LB is loudest right now)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 49
+      },
+      "collapsed": false
+    },
+    {
+      "id": 351,
+      "type": "table",
+      "title": "ALB \u2014 Top LBs by 5xx count (last 15m)",
+      "description": "If a spike is present in the 5xx timeseries, this ranks the LBs responsible. Correlate with the backend service (Lambda / ECS).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 50
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (dimension_LoadBalancer) (increase(aws_applicationelb_httpcode_target_5_xx_count_sum[15m])) > 0)",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "renameByName": {
+              "dimension_LoadBalancer": "load balancer",
+              "Value": "5xx count (15m)"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "5xx count (15m)"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 10
+                    },
+                    {
+                      "color": "red",
+                      "value": 100
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 352,
+      "type": "table",
+      "title": "ALB \u2014 Top LBs by target response time (last 15m)",
+      "description": "Sorted by average target response time. (5xx up + latency up) means backend saturation; (5xx up alone) means functional errors.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 50
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "topk(10, avg by (dimension_LoadBalancer) (avg_over_time(aws_applicationelb_target_response_time_average[15m])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "renameByName": {
+              "dimension_LoadBalancer": "load balancer",
+              "Value": "avg latency"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "avg latency"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
       "options": {
         "showHeader": true
       }

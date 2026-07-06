@@ -1,19 +1,29 @@
 {
   "uid": "aws-services-overview",
-  "title": "AWS Services — RDS / Lambda / ALB Overview (YACE)",
+  "title": "AWS Services \u2014 RDS / Lambda / ALB Overview (YACE)",
   "description": "CloudWatch service metrics pulled via YACE (yet-another-cloudwatch-exporter). Complements the log-derived metrics from cloudwatch-log-metrics. Panels template on the resource dimensions YACE emits so this works for any AWS account.",
-  "tags": ["yace", "aws", "cloudwatch"],
+  "tags": [
+    "yace",
+    "aws",
+    "cloudwatch"
+  ],
   "schemaVersion": 39,
   "version": 2,
   "editable": true,
   "graphTooltip": 1,
-  "time": {"from": "now-3h", "to": "now"},
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
   "refresh": "1m",
   "annotations": {
     "list": [
       {
         "name": "Deployments",
-        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
         "enable": true,
         "iconColor": "rgba(0, 211, 255, 1)",
         "expr": "deploy_event",
@@ -31,7 +41,10 @@
         "name": "rds_cluster",
         "label": "RDS cluster",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
         "query": "label_values(aws_rds_database_connections_average, dimension_DBClusterIdentifier)",
         "refresh": 2,
         "includeAll": true,
@@ -41,7 +54,10 @@
         "name": "lambda_fn",
         "label": "Lambda function",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
         "query": "label_values(aws_lambda_invocations_sum, dimension_FunctionName)",
         "refresh": 2,
         "includeAll": true,
@@ -51,7 +67,10 @@
         "name": "alb",
         "label": "ALB",
         "type": "query",
-        "datasource": {"type": "prometheus", "uid": "Prometheus"},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
         "query": "label_values(aws_applicationelb_request_count_sum, dimension_LoadBalancer)",
         "refresh": 2,
         "includeAll": true,
@@ -60,14 +79,47 @@
     ]
   },
   "panels": [
-    {"id": 100, "type": "row", "title": "RDS", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "collapsed": false},
-
+    {
+      "id": 1,
+      "type": "text",
+      "title": "How to read this dashboard",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## What to do based on what you see\n\n| If you see... | Go to... | Then... |\n| --- | --- | --- |\n| **Lambda \u2014 functions with any error > 0** | **Lambda \u2014 Triage** section below | Read the error-rate line + top table. If rate is red (>5%), suspect the most recent deploy marker on the graph. |\n| **RDS \u2014 CPU >= 80% right now > 0** | RDS timeseries above | Which cluster is red? Correlate with app-side spikes on the same timeline. Peak-hour scale-out is normal. |\n| **ALB \u2014 5xx rate line moves up** | ApplicationELB section | Which LB? Correlate with backend service (its Lambda / ECS logs) at the same timestamp. |\n| **Everything is flat and green** | \u2705 nothing | This is the good state. Move on. |\n\nFull playbook: **[docs/incident-triage.md](https://github.com/kiseskrap/aws-infra-audit-toolkit/blob/main/observability-lab/docs/incident-triage.md)** \u2014 one page per signal, with the decision tree operators actually follow.\n\n**Cyan vertical lines** on any timeseries panel = a deployment. Hover for `service` / `version`. If the spike is right of a marker, the deploy is a suspect."
+      }
+    },
+    {
+      "id": 100,
+      "type": "row",
+      "title": "RDS",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "collapsed": false
+    },
     {
       "id": 101,
       "type": "timeseries",
-      "title": "RDS — DatabaseConnections (avg) by cluster",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 1},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "RDS \u2014 DatabaseConnections (avg) by cluster",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "aws_rds_database_connections_average{dimension_DBClusterIdentifier=~\"$rds_cluster\"}",
@@ -75,14 +127,26 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "short"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
     },
     {
       "id": 102,
       "type": "timeseries",
-      "title": "RDS — CPUUtilization (max) by cluster",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 1},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "RDS \u2014 CPUUtilization (max) by cluster",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "aws_rds_cpuutilization_maximum{dimension_DBClusterIdentifier=~\"$rds_cluster\"}",
@@ -90,14 +154,26 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "percent"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
     },
     {
       "id": 103,
       "type": "timeseries",
-      "title": "RDS — Read / Write latency (avg)",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 9},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "RDS \u2014 Read / Write latency (avg)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "aws_rds_read_latency_average{dimension_DBClusterIdentifier=~\"$rds_cluster\"}",
@@ -110,48 +186,124 @@
           "refId": "B"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "s"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
     },
     {
       "id": 104,
       "type": "stat",
       "title": "RDS clusters observed",
-      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 9},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 13
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "count(count by (dimension_DBClusterIdentifier) (aws_rds_database_connections_average))",
           "refId": "A"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
-      "fieldConfig": {"defaults": {"unit": "short"}}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
     },
     {
       "id": 105,
       "type": "stat",
-      "title": "RDS — CPU >= 80% right now",
-      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 9},
+      "title": "RDS \u2014 CPU >= 80% right now",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 13
+      },
       "description": "Clusters currently at high CPU. Not necessarily a bad thing if peak-time scale-out is expected; use this to correlate with app-side symptoms.",
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "count(aws_rds_cpuutilization_maximum >= 80)",
           "refId": "A"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
-      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 3}]}}}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        }
+      }
     },
-
-    {"id": 200, "type": "row", "title": "Lambda", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 13}, "collapsed": false},
-
+    {
+      "id": 200,
+      "type": "row",
+      "title": "Lambda",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "collapsed": false
+    },
     {
       "id": 201,
       "type": "timeseries",
-      "title": "Lambda — Invocations/s (top 15)",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "Lambda \u2014 Invocations/s (top 15)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "topk(15, sum by (dimension_FunctionName) (rate(aws_lambda_invocations_sum{dimension_FunctionName=~\"$lambda_fn\"}[5m])))",
@@ -159,14 +311,26 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "iops"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "iops"
+        }
+      }
     },
     {
       "id": 202,
       "type": "timeseries",
-      "title": "Lambda — Errors/s (top 15)",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "Lambda \u2014 Errors/s (top 15)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "topk(15, sum by (dimension_FunctionName) (rate(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\"}[5m])))",
@@ -174,14 +338,29 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "eps", "custom": {"lineWidth": 2}}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "eps",
+          "custom": {
+            "lineWidth": 2
+          }
+        }
+      }
     },
     {
       "id": 203,
       "type": "timeseries",
-      "title": "Lambda — Duration (max) by function",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "Lambda \u2014 Duration (max) by function",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "topk(15, aws_lambda_duration_maximum{dimension_FunctionName=~\"$lambda_fn\"})",
@@ -189,48 +368,137 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "ms"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      }
     },
     {
       "id": 204,
       "type": "stat",
-      "title": "Lambda — functions with any error (last 15m)",
-      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 22},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "Lambda \u2014 functions with any error (last 15m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 26
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "count(sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum[15m])) > 0)",
           "refId": "A"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
-      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "id": 205,
       "type": "stat",
-      "title": "Lambda — throttles (5m)",
-      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 22},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "Lambda \u2014 throttles (5m)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 26
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "sum(increase(aws_lambda_throttles_sum[5m]))",
           "refId": "A"
         }
       ],
-      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
-      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}}
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      }
     },
-
-    {"id": 250, "type": "row", "title": "Lambda — Triage (when the stat panel above is not zero)", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 26}, "collapsed": false},
-
+    {
+      "id": 250,
+      "type": "row",
+      "title": "Lambda \u2014 Triage (when the stat panel above is not zero)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "collapsed": false
+    },
     {
       "id": 251,
       "type": "timeseries",
-      "title": "Lambda — Error rate % (top 15)",
+      "title": "Lambda \u2014 Error rate % (top 15)",
       "description": "errors / invocations over the last 15 minutes. 0.1% is noise, 1% is worth investigating, 5%+ is an incident.",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 27},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 31
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "topk(15, 100 * sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m])) / clamp_min(sum by (dimension_FunctionName) (increase(aws_lambda_invocations_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m])), 1))",
@@ -241,22 +509,48 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "thresholds": {"mode": "absolute", "steps": [
-            {"color": "green", "value": null},
-            {"color": "yellow", "value": 1},
-            {"color": "red", "value": 5}
-          ]},
-          "custom": {"lineWidth": 2, "gradientMode": "opacity", "thresholdsStyle": {"mode": "line+area"}}
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "custom": {
+            "lineWidth": 2,
+            "gradientMode": "opacity",
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          }
         }
       }
     },
     {
       "id": 252,
       "type": "table",
-      "title": "Lambda — Top functions by errors (last 15m) — click function name",
+      "title": "Lambda \u2014 Top functions by errors (last 15m) \u2014 click function name",
       "description": "One row per function with any errors in the last 15 minutes, ranked by absolute error count. The 'CloudWatch' link opens Logs Insights filtered to that function's ERROR events.",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 27},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 31
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "topk(10, sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m])) > 0)",
@@ -274,12 +568,22 @@
       "transformations": [
         {
           "id": "joinByField",
-          "options": {"byField": "dimension_FunctionName", "mode": "outer"}
+          "options": {
+            "byField": "dimension_FunctionName",
+            "mode": "outer"
+          }
         },
         {
           "id": "organize",
           "options": {
-            "excludeByName": {"Time 1": true, "Time 2": true, "__name__ 1": true, "__name__ 2": true, "instance": true, "job": true},
+            "excludeByName": {
+              "Time 1": true,
+              "Time 2": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "instance": true,
+              "job": true
+            },
             "renameByName": {
               "dimension_FunctionName": "function",
               "Value #A": "errors (15m)",
@@ -292,7 +596,11 @@
           "options": {
             "alias": "error rate",
             "mode": "binary",
-            "binary": {"left": "errors (15m)", "operator": "/", "right": "invocations (15m)"}
+            "binary": {
+              "left": "errors (15m)",
+              "operator": "/",
+              "right": "invocations (15m)"
+            }
           }
         }
       ],
@@ -300,42 +608,95 @@
         "defaults": {},
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "error rate"},
+            "matcher": {
+              "id": "byName",
+              "options": "error rate"
+            },
             "properties": [
-              {"id": "unit", "value": "percentunit"},
-              {"id": "custom.cellOptions", "value": {"type": "color-background", "mode": "gradient"}},
-              {"id": "thresholds", "value": {"mode": "absolute", "steps": [
-                {"color": "green", "value": null},
-                {"color": "yellow", "value": 0.01},
-                {"color": "red", "value": 0.05}
-              ]}}
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.01
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.05
+                    }
+                  ]
+                }
+              }
             ]
           },
           {
-            "matcher": {"id": "byName", "options": "function"},
+            "matcher": {
+              "id": "byName",
+              "options": "function"
+            },
             "properties": [
-              {"id": "links", "value": [
-                {
-                  "title": "Open CloudWatch Logs Insights for this function",
-                  "url": "https://ap-northeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-northeast-2#logsV2:logs-insights$3FqueryDetail$3D~(end~0~start~-900~timeType~'RELATIVE~unit~'seconds~editorString~'fields*20*40timestamp*2c*20*40message*0a*7c*20filter*20*40message*20like*20*2fERROR*2f*0a*7c*20sort*20*40timestamp*20desc*0a*7c*20limit*20100~source~(~'*2faws*2flambda*2f${__data.fields.function}))",
-                  "targetBlank": true
-                }
-              ]}
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open CloudWatch Logs Insights for this function",
+                    "url": "https://ap-northeast-2.console.aws.amazon.com/cloudwatch/home?region=ap-northeast-2#logsV2:logs-insights$3FqueryDetail$3D~(end~0~start~-900~timeType~'RELATIVE~unit~'seconds~editorString~'fields*20*40timestamp*2c*20*40message*0a*7c*20filter*20*40message*20like*20*2fERROR*2f*0a*7c*20sort*20*40timestamp*20desc*0a*7c*20limit*20100~source~(~'*2faws*2flambda*2f${__data.fields.function}))",
+                    "targetBlank": true
+                  }
+                ]
+              }
             ]
           }
         ]
       },
-      "options": {"showHeader": true, "cellHeight": "sm"}
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
     },
-
-    {"id": 300, "type": "row", "title": "ApplicationELB", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 35}, "collapsed": false},
-
+    {
+      "id": 300,
+      "type": "row",
+      "title": "ApplicationELB",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "collapsed": false
+    },
     {
       "id": 301,
       "type": "timeseries",
-      "title": "ALB — 5xx rate by LB (per 5m)",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "ALB \u2014 5xx rate by LB (per 5m)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "sum by (dimension_LoadBalancer) (rate(aws_applicationelb_httpcode_target_5_xx_count_sum{dimension_LoadBalancer=~\"$alb\"}[5m]))",
@@ -343,14 +704,26 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "eps"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "eps"
+        }
+      }
     },
     {
       "id": 302,
       "type": "timeseries",
-      "title": "ALB — Target response time (avg)",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "title": "ALB \u2014 Target response time (avg)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "aws_applicationelb_target_response_time_average{dimension_LoadBalancer=~\"$alb\"}",
@@ -358,15 +731,27 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "s"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
     },
     {
       "id": 303,
       "type": "table",
-      "title": "ALB — inventory",
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 44},
+      "title": "ALB \u2014 inventory",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
       "description": "One row per ALB discovered by YACE. Sanity-check that the expected load balancers are all listed here.",
-      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
           "expr": "aws_applicationelb_request_count_sum",
@@ -379,12 +764,24 @@
         {
           "id": "organize",
           "options": {
-            "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true, "region": true},
-            "indexByName": {"dimension_LoadBalancer": 0, "account_id": 1, "Value": 2}
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "instance": true,
+              "job": true,
+              "region": true
+            },
+            "indexByName": {
+              "dimension_LoadBalancer": 0,
+              "account_id": 1,
+              "Value": 2
+            }
           }
         }
       ],
-      "options": {"showHeader": true}
+      "options": {
+        "showHeader": true
+      }
     }
   ]
 }

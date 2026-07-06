@@ -8,11 +8,11 @@
     "cloudwatch"
   ],
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "editable": true,
   "graphTooltip": 1,
   "time": {
-    "from": "now-3h",
+    "from": "now-6h",
     "to": "now"
   },
   "refresh": "1m",
@@ -122,7 +122,7 @@
       },
       "targets": [
         {
-          "expr": "aws_rds_database_connections_average{dimension_DBClusterIdentifier=~\"$rds_cluster\"}",
+          "expr": "aws_rds_database_connections_average{dimension_DBClusterIdentifier=~\"$rds_cluster\",dimension_DBClusterIdentifier!=\"\"}",
           "legendFormat": "{{dimension_DBClusterIdentifier}}",
           "refId": "A"
         }
@@ -149,7 +149,7 @@
       },
       "targets": [
         {
-          "expr": "aws_rds_cpuutilization_maximum{dimension_DBClusterIdentifier=~\"$rds_cluster\"}",
+          "expr": "aws_rds_cpuutilization_maximum{dimension_DBClusterIdentifier=~\"$rds_cluster\",dimension_DBClusterIdentifier!=\"\"}",
           "legendFormat": "{{dimension_DBClusterIdentifier}}",
           "refId": "A"
         }
@@ -176,12 +176,12 @@
       },
       "targets": [
         {
-          "expr": "aws_rds_read_latency_average{dimension_DBClusterIdentifier=~\"$rds_cluster\"}",
+          "expr": "aws_rds_read_latency_average{dimension_DBClusterIdentifier=~\"$rds_cluster\",dimension_DBClusterIdentifier!=\"\"}",
           "legendFormat": "read / {{dimension_DBClusterIdentifier}}",
           "refId": "A"
         },
         {
-          "expr": "aws_rds_write_latency_average{dimension_DBClusterIdentifier=~\"$rds_cluster\"}",
+          "expr": "aws_rds_write_latency_average{dimension_DBClusterIdentifier=~\"$rds_cluster\",dimension_DBClusterIdentifier!=\"\"}",
           "legendFormat": "write / {{dimension_DBClusterIdentifier}}",
           "refId": "B"
         }
@@ -208,7 +208,7 @@
       },
       "targets": [
         {
-          "expr": "count(count by (dimension_DBClusterIdentifier) (aws_rds_database_connections_average))",
+          "expr": "count(count by (dimension_DBClusterIdentifier) (aws_rds_database_connections_average{dimension_DBClusterIdentifier!=\"\"})) OR on() vector(0)",
           "refId": "A"
         }
       ],
@@ -243,7 +243,7 @@
       },
       "targets": [
         {
-          "expr": "count(aws_rds_cpuutilization_maximum >= 80)",
+          "expr": "count(aws_rds_cpuutilization_maximum{dimension_DBClusterIdentifier!=\"\"} >= 80) OR on() vector(0)",
           "refId": "A"
         }
       ],
@@ -306,7 +306,7 @@
       },
       "targets": [
         {
-          "expr": "topk(15, sum by (dimension_FunctionName) (rate(aws_lambda_invocations_sum{dimension_FunctionName=~\"$lambda_fn\"}[5m])))",
+          "expr": "topk(15, sum by (dimension_FunctionName) (rate(aws_lambda_invocations_sum{dimension_FunctionName=~\"$lambda_fn\",dimension_FunctionName!=\"\"}[5m])))",
           "legendFormat": "{{dimension_FunctionName}}",
           "refId": "A"
         }
@@ -333,7 +333,7 @@
       },
       "targets": [
         {
-          "expr": "topk(15, sum by (dimension_FunctionName) (rate(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\"}[5m])))",
+          "expr": "topk(15, sum by (dimension_FunctionName) (rate(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\",dimension_FunctionName!=\"\"}[5m])))",
           "legendFormat": "{{dimension_FunctionName}}",
           "refId": "A"
         }
@@ -363,7 +363,7 @@
       },
       "targets": [
         {
-          "expr": "topk(15, aws_lambda_duration_maximum{dimension_FunctionName=~\"$lambda_fn\"})",
+          "expr": "topk(15, aws_lambda_duration_maximum{dimension_FunctionName=~\"$lambda_fn\",dimension_FunctionName!=\"\"})",
           "legendFormat": "{{dimension_FunctionName}}",
           "refId": "A"
         }
@@ -390,7 +390,7 @@
       },
       "targets": [
         {
-          "expr": "count(sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum[15m])) > 0)",
+          "expr": "count(sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum{dimension_FunctionName!=\"\"}[15m])) > 0) OR on() vector(0)",
           "refId": "A"
         }
       ],
@@ -441,7 +441,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(aws_lambda_throttles_sum[5m]))",
+          "expr": "sum(increase(aws_lambda_throttles_sum{dimension_FunctionName!=\"\"}[5m])) OR on() vector(0)",
           "refId": "A"
         }
       ],
@@ -501,7 +501,7 @@
       },
       "targets": [
         {
-          "expr": "topk(15, 100 * sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m])) / clamp_min(sum by (dimension_FunctionName) (increase(aws_lambda_invocations_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m])), 1))",
+          "expr": "topk(15, 100 * sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\",dimension_FunctionName!=\"\"}[15m])) / clamp_min(sum by (dimension_FunctionName) (increase(aws_lambda_invocations_sum{dimension_FunctionName=~\"$lambda_fn\",dimension_FunctionName!=\"\"}[15m])), 1))",
           "legendFormat": "{{dimension_FunctionName}}",
           "refId": "A"
         }
@@ -553,53 +553,25 @@
       },
       "targets": [
         {
-          "expr": "topk(10, sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m])) > 0)",
+          "expr": "topk(10, sum by (dimension_FunctionName) (increase(aws_lambda_errors_sum{dimension_FunctionName=~\"$lambda_fn\",dimension_FunctionName!=\"\"}[15m])) > 0)",
           "format": "table",
           "instant": true,
           "refId": "A"
-        },
-        {
-          "expr": "sum by (dimension_FunctionName) (increase(aws_lambda_invocations_sum{dimension_FunctionName=~\"$lambda_fn\"}[15m]))",
-          "format": "table",
-          "instant": true,
-          "refId": "B"
         }
       ],
       "transformations": [
         {
-          "id": "joinByField",
-          "options": {
-            "byField": "dimension_FunctionName",
-            "mode": "outer"
-          }
-        },
-        {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time 1": true,
-              "Time 2": true,
-              "__name__ 1": true,
-              "__name__ 2": true,
+              "Time": true,
+              "__name__": true,
               "instance": true,
               "job": true
             },
             "renameByName": {
               "dimension_FunctionName": "function",
-              "Value #A": "errors (15m)",
-              "Value #B": "invocations (15m)"
-            }
-          }
-        },
-        {
-          "id": "calculateField",
-          "options": {
-            "alias": "error rate",
-            "mode": "binary",
-            "binary": {
-              "left": "errors (15m)",
-              "operator": "/",
-              "right": "invocations (15m)"
+              "Value": "errors (15m)"
             }
           }
         }
@@ -699,7 +671,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (dimension_LoadBalancer) (rate(aws_applicationelb_httpcode_target_5_xx_count_sum{dimension_LoadBalancer=~\"$alb\"}[5m]))",
+          "expr": "sum by (dimension_LoadBalancer) (rate(aws_applicationelb_httpcode_target_5_xx_count_sum{dimension_LoadBalancer=~\"$alb\",dimension_LoadBalancer!=\"\"}[5m]))",
           "legendFormat": "{{dimension_LoadBalancer}}",
           "refId": "A"
         }
@@ -726,7 +698,7 @@
       },
       "targets": [
         {
-          "expr": "aws_applicationelb_target_response_time_average{dimension_LoadBalancer=~\"$alb\"}",
+          "expr": "aws_applicationelb_target_response_time_average{dimension_LoadBalancer=~\"$alb\",dimension_LoadBalancer!=\"\"}",
           "legendFormat": "{{dimension_LoadBalancer}}",
           "refId": "A"
         }
@@ -754,7 +726,7 @@
       },
       "targets": [
         {
-          "expr": "aws_applicationelb_request_count_sum",
+          "expr": "aws_applicationelb_request_count_sum{dimension_LoadBalancer!=\"\"}",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -812,7 +784,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, max by (dimension_DBClusterIdentifier) (max_over_time(aws_rds_cpuutilization_maximum[15m])))",
+          "expr": "topk(10, max by (dimension_DBClusterIdentifier) (max_over_time(aws_rds_cpuutilization_maximum{dimension_DBClusterIdentifier!=\"\"}[15m])))",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -900,7 +872,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, avg by (dimension_DBClusterIdentifier) (avg_over_time(aws_rds_database_connections_average[15m])))",
+          "expr": "topk(10, avg by (dimension_DBClusterIdentifier) (avg_over_time(aws_rds_database_connections_average{dimension_DBClusterIdentifier!=\"\"}[15m])))",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -956,7 +928,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, sum by (dimension_LoadBalancer) (increase(aws_applicationelb_httpcode_target_5_xx_count_sum[15m])) > 0)",
+          "expr": "topk(10, sum by (dimension_LoadBalancer) (increase(aws_applicationelb_httpcode_target_5_xx_count_sum{dimension_LoadBalancer!=\"\"}[15m])) > 0)",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -1040,7 +1012,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, avg by (dimension_LoadBalancer) (avg_over_time(aws_applicationelb_target_response_time_average[15m])))",
+          "expr": "topk(10, avg by (dimension_LoadBalancer) (avg_over_time(aws_applicationelb_target_response_time_average{dimension_LoadBalancer!=\"\"}[15m])))",
           "format": "table",
           "instant": true,
           "refId": "A"

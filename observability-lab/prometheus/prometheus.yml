@@ -15,6 +15,10 @@ scrape_configs:
           - cloudwatch-log-metrics:9108
 
   # YACE — CloudWatch service metrics (RDS/SQS/Lambda/ALB via tag discovery).
+  # metric_relabel_configs drops the aggregate/rollup series YACE emits
+  # for each resource type (name="global", plus per-EngineName /
+  # per-DatabaseClass rollups for RDS). These pollute topk() panels
+  # because the aggregate series carry no per-resource dimension label.
   - job_name: yace
     metrics_path: /metrics
     scrape_interval: 60s
@@ -22,6 +26,19 @@ scrape_configs:
     static_configs:
       - targets:
           - yace:5000
+    metric_relabel_configs:
+      - source_labels: [name]
+        regex: ^global$
+        action: drop
+      - source_labels: [__name__, dimension_DBClusterIdentifier]
+        regex: aws_rds_.*;
+        action: drop
+      - source_labels: [__name__, dimension_FunctionName]
+        regex: aws_lambda_.*;
+        action: drop
+      - source_labels: [__name__, dimension_LoadBalancer]
+        regex: aws_applicationelb_.*;
+        action: drop
 
   # Pushgateway — deploy events pushed by CI or ops. See
   # docs/deployment-annotations.md. honor_labels lets pushed labels

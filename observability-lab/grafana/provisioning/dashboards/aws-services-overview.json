@@ -8,7 +8,7 @@
     "cloudwatch"
   ],
   "schemaVersion": 39,
-  "version": 4,
+  "version": 5,
   "editable": true,
   "graphTooltip": 1,
   "time": {
@@ -928,7 +928,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, sum by (dimension_LoadBalancer) (increase(aws_applicationelb_httpcode_target_5_xx_count_sum{dimension_LoadBalancer!=\"\"}[15m])) > 0)",
+          "expr": "topk(10, sum by (dimension_LoadBalancer) (increase(aws_applicationelb_httpcode_target_5_xx_count_sum{dimension_LoadBalancer!=\"\"}[15m])))",
           "format": "table",
           "instant": true,
           "refId": "A"

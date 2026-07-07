@@ -10,16 +10,18 @@
 
 services:
 
-  # ---------- Hospital on-prem ----------
+  # ---------- Hospital A on-prem ----------
 
   vitalcare-mock:
     build:
       context: ./on-prem/vitalcare-mock
-    container_name: hospital-vitalcare-mock
+    container_name: hospital-a-vitalcare-mock
     environment:
-      HOSPITAL_ID: hospital-demo
+      HOSPITAL_ID: hospital-a-seoul-general
       WARD_ID: icu-a
       SERVICE_VERSION: 1.0.0
+      # Contract tier drives which feature flags advertise as "on".
+      CONTRACT_TIER: enterprise
     ports:
       # Exposed only for local exploration. In a hospital, this would
       # be reachable only from the on-prem management network.
@@ -30,12 +32,43 @@ services:
   otel-collector:
     # 0.115+ is needed for prometheusremotewrite exporter's sending_queue.
     image: otel/opentelemetry-collector-contrib:0.115.1
-    container_name: hospital-otel-collector
+    container_name: hospital-a-otel-collector
     command: ["--config=/etc/otel/config.yaml"]
     volumes:
       - ./on-prem/otel-collector/config.yaml:/etc/otel/config.yaml:ro
     depends_on:
       - vitalcare-mock
+      - cloud-prometheus
+    networks:
+      - lab
+
+  # ---------- Hospital B on-prem (multi-tenant demo) ----------
+  # Different hospital_id, different ward, different contract tier so
+  # the aggregate dashboards can show tenant-level differences.
+
+  vitalcare-mock-b:
+    build:
+      context: ./on-prem/vitalcare-mock
+    container_name: hospital-b-vitalcare-mock
+    environment:
+      HOSPITAL_ID: hospital-b-busan-medical
+      WARD_ID: er-1
+      SERVICE_VERSION: 1.0.0
+      CONTRACT_TIER: standard
+    ports:
+      - "8082:8080"
+    networks:
+      - lab
+
+  otel-collector-b:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    container_name: hospital-b-otel-collector
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      # Same collector config — the mock's own labels distinguish the tenant.
+      - ./on-prem/otel-collector/config.b.yaml:/etc/otel/config.yaml:ro
+    depends_on:
+      - vitalcare-mock-b
       - cloud-prometheus
     networks:
       - lab

@@ -1,0 +1,216 @@
+{
+  "uid": "executive-overview",
+  "title": "VitalCare — Executive Overview (all hospitals)",
+  "description": "Business KPIs aggregated across every hospital that forwards metrics. No PHI, no per-patient data. Use this for weekly product reviews and quarterly business reviews.",
+  "tags": ["hospital-remote", "vitalcare", "executive"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {"from": "now-24h", "to": "now"},
+  "refresh": "5m",
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "How to read this dashboard",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "options": {
+        "mode": "markdown",
+        "content": "## Business KPIs across every VitalCare deployment\n\nEvery hospital that runs the vendor's OTel Collector shows up here as a `hospital_id` tenant. All values are **aggregated** — no per-patient data, no per-user data, no PHI. See [`docs/phi-protection.md`](https://github.com/kiseskrap/aws-infra-audit-toolkit/blob/main/observability-lab/hospital-remote/docs/phi-protection.md).\n\n| Panel | What it answers |\n| --- | --- |\n| **Active sites** | How many contracted hospitals are actually running our system right now |\n| **Total active users** | Product volume — the leading indicator of retention |\n| **Alert precision (true-positive rate)** | Is the product doing what it claims? If this drops, prioritize investigation over new features. |\n| **p95 alert acknowledgement time** | Clinical workflow friction. A rising line means the product is losing the tolerance of the ward. |\n| **Site adoption ranking** | Who is a heavy user (case-study candidate) and who is at risk of churn (silent site) |\n| **Feature adoption by tier** | Are enterprise-only features actually being used by enterprise customers? |\n\nDrill into any hospital's usage patterns via the **[Product Analytics](./d/product-analytics)** dashboard."
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Active sites (running now)",
+      "description": "Hospitals whose service_up = 1 right now.",
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "count(count by (hospital_id) (vitalcare_service_up == 1))",
+        "refId": "A"
+      }],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "green"}}}
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Total active users",
+      "description": "Sum of vitalcare_active_users across every hospital and role.",
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum(vitalcare_active_users) OR on() vector(0)",
+        "refId": "A"
+      }],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"},
+      "fieldConfig": {"defaults": {"unit": "short"}}
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Alert precision (24h true-positive rate)",
+      "description": "true_positive / (true_positive + false_positive + timeout). >80% is good, <60% needs product intervention.",
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum(increase(vitalcare_alert_outcome_total{outcome=\"true_positive\"}[24h])) / clamp_min(sum(increase(vitalcare_alert_outcome_total[24h])), 1)",
+        "refId": "A"
+      }],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "area"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "red", "value": null},
+            {"color": "yellow", "value": 0.6},
+            {"color": "green", "value": 0.8}
+          ]}
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "p95 alert acknowledgement time (24h)",
+      "description": "How fast the ward responds to an alert. Rising = clinical workflow is losing patience.",
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le) (rate(vitalcare_alert_ack_seconds_bucket[24h])))",
+        "refId": "A"
+      }],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "graphMode": "area"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "yellow", "value": 60},
+            {"color": "red", "value": 300}
+          ]}
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Active users by hospital",
+      "description": "One line per hospital. Look for hospitals whose line is flat at zero — silent sites.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 9},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum by (hospital_id) (vitalcare_active_users)",
+        "legendFormat": "{{hospital_id}}",
+        "refId": "A"
+      }],
+      "fieldConfig": {"defaults": {"unit": "short"}}
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Alerts generated per second by hospital",
+      "description": "Rate of alerts across each hospital. Sudden spike = data-source glitch or actual clinical event.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 9},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum by (hospital_id) (rate(vitalcare_alerts_generated_total[15m]))",
+        "legendFormat": "{{hospital_id}}",
+        "refId": "A"
+      }],
+      "fieldConfig": {"defaults": {"unit": "cps"}}
+    },
+    {
+      "id": 30,
+      "type": "table",
+      "title": "Site adoption ranking (24h active users, average)",
+      "description": "Heaviest users at top. Empty rows or hospitals not listed here = silent sites, potential churn.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 17},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "topk(20, avg by (hospital_id) (avg_over_time(vitalcare_active_users[24h])))",
+        "format": "table", "instant": true, "refId": "A"
+      }],
+      "transformations": [{
+        "id": "organize",
+        "options": {
+          "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true},
+          "renameByName": {"hospital_id": "hospital", "Value": "avg active users (24h)"}
+        }
+      }],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [{
+          "matcher": {"id": "byName", "options": "avg active users (24h)"},
+          "properties": [
+            {"id": "custom.cellOptions", "value": {"type": "color-background", "mode": "gradient"}},
+            {"id": "thresholds", "value": {"mode": "absolute", "steps": [
+              {"color": "yellow", "value": null},
+              {"color": "green", "value": 5}
+            ]}}
+          ]
+        }]
+      },
+      "options": {"showHeader": true}
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Alert precision by hospital (24h)",
+      "description": "One row per hospital. If a specific site's TP rate is consistently low, the algorithm is a bad fit for that ward or the site has a data-quality problem.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 17},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum by (hospital_id) (increase(vitalcare_alert_outcome_total{outcome=\"true_positive\"}[24h])) / clamp_min(sum by (hospital_id) (increase(vitalcare_alert_outcome_total[24h])), 1)",
+        "format": "table", "instant": true, "refId": "A"
+      }],
+      "transformations": [{
+        "id": "organize",
+        "options": {
+          "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true},
+          "renameByName": {"hospital_id": "hospital", "Value": "TP rate (24h)"}
+        }
+      }],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [{
+          "matcher": {"id": "byName", "options": "TP rate (24h)"},
+          "properties": [
+            {"id": "unit", "value": "percentunit"},
+            {"id": "custom.cellOptions", "value": {"type": "color-background", "mode": "gradient"}},
+            {"id": "thresholds", "value": {"mode": "absolute", "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.6},
+              {"color": "green", "value": 0.8}
+            ]}}
+          ]
+        }]
+      },
+      "options": {"showHeader": true}
+    },
+    {
+      "id": 40,
+      "type": "table",
+      "title": "Feature adoption by contract tier",
+      "description": "How many hospitals in each tier have each feature turned on. A feature that no enterprise-tier site uses is a candidate for deprecation or repositioning.",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 25},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum by (feature, contract_tier) (vitalcare_feature_active == 1)",
+        "format": "table", "instant": true, "refId": "A"
+      }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true},
+            "renameByName": {"feature": "feature", "contract_tier": "tier", "Value": "sites with feature on"}
+          }
+        }
+      ],
+      "options": {"showHeader": true}
+    }
+  ]
+}

@@ -104,14 +104,21 @@ fi
 if curl -s "$mock_url" | grep -qE '^vitalcare_vitals_by_patient_total\{[^}]*patient_id='; then
   local_leaked=$((local_leaked + 1))
 fi
+# Phase-2 vectors: legit product metric names, PHI in labels.
+if curl -s "$mock_url" | grep -qE '^vitalcare_alerts_generated_total\{[^}]*patient_id='; then
+  local_leaked=$((local_leaked + 1))
+fi
+if curl -s "$mock_url" | grep -qE '^vitalcare_active_users\{[^}]*user_name='; then
+  local_leaked=$((local_leaked + 1))
+fi
 
-if [[ "$local_leaked" -ne 3 ]]; then
-  fail "sanity check failed — expected 3 PHI-shaped metrics locally, saw $local_leaked"
+if [[ "$local_leaked" -ne 5 ]]; then
+  fail "sanity check failed — expected 5 PHI-shaped metrics locally, saw $local_leaked"
   fail "the red-team traffic never started; this is a test infrastructure bug, not a filter incident"
   exit 2
 fi
 
-pass "sanity: vitalcare-mock IS emitting 3 PHI-shaped metrics locally (as intended)"
+pass "sanity: vitalcare-mock IS emitting 5 PHI-shaped metrics locally (as intended)"
 
 # --- Wait for collector to have scraped + exported --------------------------
 
@@ -152,30 +159,44 @@ else
   pass "attack 2 blocked: vitalcare_mrn_lookups_total is NOT in cloud"
 fi
 
-# Attack 3 — the metric name is innocent, but the label carries patient_id.
-# The metric MAY appear in the cloud (it's not PHI-named), but no series
-# should carry a patient_id label. Check both.
-c3_metric=$(query_series_count 'vitalcare_vitals_by_patient_total')
-if [[ "$c3_metric" -gt 0 ]]; then
-  # OK — the metric name is not PHI. But the label must have been scrubbed.
-  # Query the actual series and look at their labels.
-  labels_json=$(curl -sf "$CLOUD_PROM_URL/api/v1/series?match%5B%5D=vitalcare_vitals_by_patient_total" 2>/dev/null || echo '{"data":[]}')
-  bad_series=$(echo "$labels_json" | python3 -c '
+check_label_absent() {
+  local metric_name="$1" bad_label="$2" attack_id="$3"
+  local c
+  c=$(query_series_count "$metric_name")
+  if [[ "$c" -eq 0 ]]; then
+    pass "attack $attack_id blocked: $metric_name is NOT in cloud at all"
+    return 0
+  fi
+  local encoded
+  encoded=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$metric_name")
+  local labels_json
+  labels_json=$(curl -sf "$CLOUD_PROM_URL/api/v1/series?match%5B%5D=${encoded}" 2>/dev/null || echo '{"data":[]}')
+  local bad_series
+  bad_series=$(echo "$labels_json" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-bad = [s for s in d.get("data", []) if "patient_id" in s]
+bad = [s for s in d.get('data', []) if '$bad_label' in s]
 print(len(bad))
-')
+")
   if [[ "$bad_series" -gt 0 ]]; then
-    fail "leak #3: vitalcare_vitals_by_patient_total kept the patient_id label ($bad_series series)"
+    fail "leak $attack_id: $metric_name kept the $bad_label label ($bad_series series)"
     violation_count=$((violation_count + 1))
   else
-    pass "attack 3 blocked: patient_id label was scrubbed from vitalcare_vitals_by_patient_total"
+    pass "attack $attack_id blocked: $bad_label label scrubbed from $metric_name"
   fi
-else
-  # Metric didn't make it either; also acceptable.
-  pass "attack 3 blocked: vitalcare_vitals_by_patient_total is NOT in cloud at all"
-fi
+}
+
+# Attack 3 — innocent metric name, PHI in label.
+check_label_absent "vitalcare_vitals_by_patient_total" "patient_id" 3
+
+# Attack 4 — legit product metric name, PHI in label. Real-world vector:
+# a well-meaning engineer adds patient_id to a product metric during
+# debugging and forgets to remove it.
+check_label_absent "vitalcare_alerts_generated_total" "patient_id" 4
+
+# Attack 5 — legit product metric name, PII in label. Same class of
+# mistake as attack 4 but with a user identifier instead of a patient one.
+check_label_absent "vitalcare_active_users" "user_name" 5
 
 # --- Restore the mock to normal mode --------------------------------------
 
@@ -186,11 +207,11 @@ docker compose -f "$COMPOSE_FILE" up -d vitalcare-mock >/dev/null 2>&1 || true
 
 echo
 if [[ "$violation_count" -eq 0 ]]; then
-  pass "PASS — all 3 PHI attack vectors were blocked by the OTel Collector"
+  pass "PASS — all 5 PHI attack vectors were blocked by the OTel Collector"
   echo "     evidence: series match count reported above."
   exit 0
 else
-  fail "FAIL — $violation_count of 3 PHI attack vectors leaked to the cloud"
+  fail "FAIL — $violation_count of 5 attack vectors leaked to the cloud"
   fail "this is a COMPLIANCE INCIDENT. Review:"
   fail "  1. on-prem/otel-collector/config.yaml — is transform/allowlist correct?"
   fail "  2. on-prem/otel-collector/config.yaml — is filter/drop_phi_metrics correct?"

@@ -1,0 +1,164 @@
+{
+  "uid": "product-analytics",
+  "title": "VitalCare — Product Analytics (per hospital)",
+  "description": "Per-hospital drill-in for the product team. Usage patterns, alert accuracy, response behavior — for one contracted hospital at a time. Companion to the Executive Overview.",
+  "tags": ["hospital-remote", "vitalcare", "product"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "time": {"from": "now-6h", "to": "now"},
+  "refresh": "1m",
+  "templating": {
+    "list": [
+      {
+        "name": "hospital",
+        "label": "Hospital",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+        "query": "label_values(vitalcare_service_up, hospital_id)",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "How to read this dashboard",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "options": {
+        "mode": "markdown",
+        "content": "## Product analytics for `$hospital`\n\nPick a hospital in the dropdown above. Every panel below scopes to that hospital only. Compare hospitals side-by-side by opening the dashboard twice in two browser tabs with different selections.\n\n| Panel | What to look for |\n| --- | --- |\n| **Active users by role** | Attending / resident / nurse ratio tells you which persona is actually holding the pager |\n| **Alerts by severity (rate)** | The alerting rhythm of the ward. Critical rate should be low; medium/low can be higher. |\n| **False positive rate by severity** | ⭐ The product-accuracy signal at this site. A rising FP rate = the alert model is losing calibration for this ward. |\n| **Alert acknowledgement heatmap** | Distribution of time-to-ack per severity. Critical alerts should cluster left (fast). |\n| **Session length distribution by role** | Nurse sessions are short and frequent; attending sessions are longer and rarer. Big deviation = workflow change. |\n| **Feature status** | Which features are enabled at this specific site right now. Deployment drift shows up here first. |\n\nBack to the aggregate view: **[Executive Overview](./d/executive-overview)**."
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Active users by role — $hospital",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum by (role) (vitalcare_active_users{hospital_id=~\"$hospital\"})",
+        "legendFormat": "{{role}}",
+        "refId": "A"
+      }],
+      "fieldConfig": {"defaults": {"unit": "short"}}
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Alerts per minute by severity — $hospital",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum by (severity) (rate(vitalcare_alerts_generated_total{hospital_id=~\"$hospital\"}[5m])) * 60",
+        "legendFormat": "{{severity}}",
+        "refId": "A"
+      }],
+      "fieldConfig": {"defaults": {"unit": "cpm"}}
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "False-positive rate by severity — $hospital (1h window)",
+      "description": "Higher = the algorithm is firing too often at this site. Compare against Executive Overview's global TP rate to spot site-specific miscalibration.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum by (severity) (rate(vitalcare_alert_outcome_total{outcome=\"false_positive\",hospital_id=~\"$hospital\"}[1h])) / clamp_min(sum by (severity) (rate(vitalcare_alert_outcome_total{hospital_id=~\"$hospital\"}[1h])), 0.001)",
+        "legendFormat": "{{severity}}",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "yellow", "value": 0.2},
+            {"color": "red", "value": 0.4}
+          ]},
+          "custom": {"lineWidth": 2, "thresholdsStyle": {"mode": "line"}}
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "Alert outcome mix (last 1h)",
+      "description": "Split of last-hour outcomes at this hospital.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum by (outcome) (increase(vitalcare_alert_outcome_total{hospital_id=~\"$hospital\"}[1h]))",
+        "legendFormat": "{{outcome}}",
+        "refId": "A"
+      }],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none", "textMode": "auto"},
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": [
+          {"matcher": {"id": "byFrameRefID", "options": "A"}, "properties": [{"id": "color", "value": {"mode": "palette-classic"}}]}
+        ]
+      }
+    },
+    {
+      "id": 30,
+      "type": "heatmap",
+      "title": "Alert acknowledgement time distribution — $hospital",
+      "description": "How fast users respond to alerts. Critical alerts should be far left (fast). Timeouts sit at the right edge.",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "sum by (le) (rate(vitalcare_alert_ack_seconds_bucket{hospital_id=~\"$hospital\"}[15m]))",
+        "format": "heatmap",
+        "legendFormat": "{{le}}",
+        "refId": "A"
+      }],
+      "options": {"calculate": false},
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Session length p50/p95 by role — $hospital",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, role) (rate(vitalcare_session_duration_seconds_bucket{hospital_id=~\"$hospital\"}[1h])))",
+          "legendFormat": "p50 / {{role}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, role) (rate(vitalcare_session_duration_seconds_bucket{hospital_id=~\"$hospital\"}[1h])))",
+          "legendFormat": "p95 / {{role}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "id": 40,
+      "type": "table",
+      "title": "Feature status — $hospital",
+      "description": "Which features are enabled right now at this site. If a feature that should be on is off (or vice versa), deployment drift.",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 29},
+      "datasource": {"type": "prometheus", "uid": "hospital-cloud-prom"},
+      "targets": [{
+        "expr": "vitalcare_feature_active{hospital_id=~\"$hospital\"}",
+        "format": "table", "instant": true, "refId": "A"
+      }],
+      "transformations": [{
+        "id": "organize",
+        "options": {
+          "excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true, "collector_id": true, "hospital_id": true, "ward_id": true, "origin": true, "service_version": true},
+          "renameByName": {"feature": "feature", "contract_tier": "tier", "Value": "on (1) / off (0)"}
+        }
+      }],
+      "options": {"showHeader": true}
+    }
+  ]
+}

@@ -20,7 +20,7 @@ receivers:
           scrape_interval: 10s
           static_configs:
             - targets:
-                - vitalcare-mock:8080
+                - vitalcare-mock-b:8080
               labels:
                 origin: hospital-on-prem
 
